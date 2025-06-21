@@ -1,8 +1,9 @@
-<!DOCTYPE html><html lang="fr">
+<!DOCTYPE html>
+<html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bot IA Locale + Pocket Option</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bot 1 min - RSI EMA MACD</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -12,121 +13,131 @@
       color: white;
     }
     .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
       padding: 10px;
     }
     iframe {
       width: 100%;
-      height: 400px;
+      height: 300px;
       border: none;
     }
     .bot-box {
-      margin-top: 20px;
       background: #1e1e1e;
       padding: 15px;
       border-radius: 8px;
-      width: 90%;
-      max-width: 800px;
+      margin-top: 20px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 15px;
+      font-size: 14px;
     }
     th, td {
-      padding: 10px;
-      text-align: center;
+      padding: 8px;
       border: 1px solid #333;
+      text-align: center;
     }
-    .buy { color: lime; }
-    .sell { color: red; }
+    .buy { color: lime; font-weight: bold; }
+    .sell { color: red; font-weight: bold; }
+    @media screen and (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      td {
+        padding: 10px;
+        border: none;
+        border-bottom: 1px solid #444;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>🔐 Connexion Pocket Option (manuelle)</h2>
-    <iframe src="https://pocketoption.com" title="Pocket Option"></iframe><div class="bot-box">
-  <h3>🤖 Signaux AI Locale (RSI + EMA)</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>Paire</th>
-        <th>EMA 9</th>
-        <th>EMA 21</th>
-        <th>RSI 14</th>
-        <th>Signal</th>
-      </tr>
-    </thead>
-    <tbody id="signalTable"></tbody>
-  </table>
-</div>
+    <h3>🔐 Connexion à Pocket Option</h3>
+    <iframe src="https://pocketoption.com" title="Pocket Option"></iframe>
 
-  </div>  <script>
-    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF"];
+    <div class="bot-box">
+      <h4>🤖 Signaux IA Locale (1 min trades)</h4>
+      <table>
+        <thead>
+          <tr><th>Paire</th><th>EMA 9</th><th>EMA 21</th><th>RSI</th><th>MACD</th><th>Signal</th></tr>
+        </thead>
+        <tbody id="signalTable"></tbody>
+      </table>
+    </div>
+  </div>
 
-    function generateFakePrices(len = 30, start = 1.1) {
+  <script>
+    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY"];
+
+    function generateData(len = 30, start = 1.1) {
       let data = [start];
       for (let i = 1; i < len; i++) {
-        data.push(data[i - 1] + (Math.random() - 0.5) * 0.01);
+        data.push(data[i - 1] + (Math.random() - 0.5) * 0.005);
       }
       return data;
     }
 
-    function calcEMA(prices, period) {
-      let k = 2 / (period + 1);
-      let ema = [prices[0]];
-      for (let i = 1; i < prices.length; i++) {
-        ema.push(prices[i] * k + ema[i - 1] * (1 - k));
+    function calcEMA(data, p) {
+      let k = 2 / (p + 1);
+      let ema = [data[0]];
+      for (let i = 1; i < data.length; i++) {
+        ema.push(data[i] * k + ema[i - 1] * (1 - k));
       }
       return ema;
     }
 
-    function calcRSI(prices, period = 14) {
+    function calcRSI(data, period = 14) {
       let gains = 0, losses = 0;
       for (let i = 1; i <= period; i++) {
-        let change = prices[i] - prices[i - 1];
-        if (change > 0) gains += change;
-        else losses -= change;
+        let change = data[i] - data[i - 1];
+        gains += Math.max(0, change);
+        losses += Math.max(0, -change);
       }
       let rs = gains / (losses || 1);
-      return 100 - (100 / (1 + rs));
+      return 100 - 100 / (1 + rs);
     }
 
-    function updateSignals() {
-      const table = document.getElementById('signalTable');
-      table.innerHTML = '';
+    function calcMACD(data) {
+      let ema12 = calcEMA(data, 12);
+      let ema26 = calcEMA(data, 26);
+      return ema12[ema12.length - 1] - ema26[ema26.length - 1];
+    }
 
+    function updateTable() {
+      const table = document.getElementById("signalTable");
+      table.innerHTML = "";
       pairs.forEach(pair => {
-        let prices = generateFakePrices(30, 1.1);
-        let ema9 = calcEMA(prices, 9).pop().toFixed(5);
-        let ema21 = calcEMA(prices, 21).pop().toFixed(5);
-        let rsi = calcRSI(prices).toFixed(2);
+        const prices = generateData();
+        const ema9 = calcEMA(prices, 9).pop();
+        const ema21 = calcEMA(prices, 21).pop();
+        const rsi = calcRSI(prices);
+        const macd = calcMACD(prices);
 
-        let signal = '⏳';
-        let signalClass = '';
-
-        if (ema9 > ema21 && rsi < 70) {
-          signal = '⬆️ BUY';
-          signalClass = 'buy';
-        } else if (ema9 < ema21 && rsi > 30) {
-          signal = '⬇️ SELL';
-          signalClass = 'sell';
+        let signal = "⏳";
+        let css = "";
+        if (ema9 > ema21 && macd > 0 && rsi < 70) {
+          signal = "⬆️ BUY";
+          css = "buy";
+        } else if (ema9 < ema21 && macd < 0 && rsi > 30) {
+          signal = "⬇️ SELL";
+          css = "sell";
         }
 
-        const row = `<tr>
-          <td>${pair}</td>
-          <td>${ema9}</td>
-          <td>${ema21}</td>
-          <td>${rsi}</td>
-          <td class="${signalClass}">${signal}</td>
-        </tr>`;
-        table.innerHTML += row;
+        table.innerHTML += `
+          <tr>
+            <td>${pair}</td>
+            <td>${ema9.toFixed(5)}</td>
+            <td>${ema21.toFixed(5)}</td>
+            <td>${rsi.toFixed(2)}</td>
+            <td>${macd.toFixed(5)}</td>
+            <td class="${css}">${signal}</td>
+          </tr>
+        `;
       });
     }
 
-    updateSignals();
-    setInterval(updateSignals, 60000); // mise à jour toutes les 60s
-  </script></body>
+    updateTable();
+    setInterval(updateTable, 60000);
+  </script>
+</body>
 </html>
