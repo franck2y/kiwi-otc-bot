@@ -1,143 +1,128 @@
-<!DOCTYPE html>
-<html lang="fr">
+<!DOCTYPE html><html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Bot 1 min - RSI EMA MACD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTC Bot AI + Graphique</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      margin: 0;
+      background-color: #111;
+      color: #fff;
       font-family: sans-serif;
-      background-color: #121212;
-      color: white;
-    }
-    .container {
-      padding: 10px;
-    }
-    iframe {
-      width: 100%;
-      height: 300px;
-      border: none;
-    }
-    .bot-box {
-      background: #1e1e1e;
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 8px;
-      border: 1px solid #333;
       text-align: center;
+      margin: 0;
+      padding: 1rem;
     }
-    .buy { color: lime; font-weight: bold; }
-    .sell { color: red; font-weight: bold; }
-    @media screen and (max-width: 600px) {
-      table, thead, tbody, th, td, tr {
-        display: block;
-      }
-      td {
-        padding: 10px;
-        border: none;
-        border-bottom: 1px solid #444;
-      }
+    canvas {
+      max-width: 100%;
+      background-color: #222;
+      border-radius: 10px;
+    }
+    #signal {
+      margin-top: 1rem;
+      font-size: 1.5rem;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h3>🔐 Connexion à Pocket Option</h3>
-    <iframe src="https://pocketoption.com" title="Pocket Option"></iframe>
+  <h2>📉 OTC Bot avec IA Neuronale + RSI/EMA/ZigZag</h2>
+  <canvas id="chart" height="300"></canvas>
+  <div id="signal">Chargement du signal...</div>  <script>
+    // Données simulées (à remplacer par API ou fichier CSV réel)
+    const prices = [1.1, 1.11, 1.12, 1.11, 1.1, 1.13, 1.14, 1.13, 1.12, 1.15, 1.16];
 
-    <div class="bot-box">
-      <h4>🤖 Signaux IA Locale (1 min trades)</h4>
-      <table>
-        <thead>
-          <tr><th>Paire</th><th>EMA 9</th><th>EMA 21</th><th>RSI</th><th>MACD</th><th>Signal</th></tr>
-        </thead>
-        <tbody id="signalTable"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY"];
-
-    function generateData(len = 30, start = 1.1) {
-      let data = [start];
-      for (let i = 1; i < len; i++) {
-        data.push(data[i - 1] + (Math.random() - 0.5) * 0.005);
+    function ema(prices, period) {
+      const k = 2 / (period + 1);
+      let emaArray = [prices[0]];
+      for (let i = 1; i < prices.length; i++) {
+        emaArray.push(prices[i] * k + emaArray[i - 1] * (1 - k));
       }
-      return data;
+      return emaArray;
     }
 
-    function calcEMA(data, p) {
-      let k = 2 / (p + 1);
-      let ema = [data[0]];
-      for (let i = 1; i < data.length; i++) {
-        ema.push(data[i] * k + ema[i - 1] * (1 - k));
-      }
-      return ema;
-    }
-
-    function calcRSI(data, period = 14) {
+    function rsi(prices, period = 14) {
       let gains = 0, losses = 0;
       for (let i = 1; i <= period; i++) {
-        let change = data[i] - data[i - 1];
-        gains += Math.max(0, change);
-        losses += Math.max(0, -change);
+        const diff = prices[i] - prices[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
       }
-      let rs = gains / (losses || 1);
-      return 100 - 100 / (1 + rs);
+      const rs = gains / losses;
+      const rsi = 100 - (100 / (1 + rs));
+      return rsi.toFixed(2);
     }
 
-    function calcMACD(data) {
-      let ema12 = calcEMA(data, 12);
-      let ema26 = calcEMA(data, 26);
-      return ema12[ema12.length - 1] - ema26[ema26.length - 1];
-    }
-
-    function updateTable() {
-      const table = document.getElementById("signalTable");
-      table.innerHTML = "";
-      pairs.forEach(pair => {
-        const prices = generateData();
-        const ema9 = calcEMA(prices, 9).pop();
-        const ema21 = calcEMA(prices, 21).pop();
-        const rsi = calcRSI(prices);
-        const macd = calcMACD(prices);
-
-        let signal = "⏳";
-        let css = "";
-        if (ema9 > ema21 && macd > 0 && rsi < 70) {
-          signal = "⬆️ BUY";
-          css = "buy";
-        } else if (ema9 < ema21 && macd < 0 && rsi > 30) {
-          signal = "⬇️ SELL";
-          css = "sell";
+    function zigzag(data, deviation = 0.5) {
+      let result = [data[0]];
+      let direction = 0;
+      for (let i = 1; i < data.length; i++) {
+        const diff = data[i] - result[result.length - 1];
+        if (direction >= 0 && diff >= deviation) {
+          direction = 1;
+          result.push(data[i]);
+        } else if (direction <= 0 && diff <= -deviation) {
+          direction = -1;
+          result.push(data[i]);
+        } else {
+          result.push(null);
         }
-
-        table.innerHTML += `
-          <tr>
-            <td>${pair}</td>
-            <td>${ema9.toFixed(5)}</td>
-            <td>${ema21.toFixed(5)}</td>
-            <td>${rsi.toFixed(2)}</td>
-            <td>${macd.toFixed(5)}</td>
-            <td class="${css}">${signal}</td>
-          </tr>
-        `;
-      });
+      }
+      return result;
     }
 
-    updateTable();
-    setInterval(updateTable, 60000);
-  </script>
-</body>
+    const ema9 = ema(prices, 9);
+    const ema21 = ema(prices, 21);
+    const zigzagData = zigzag(prices);
+    const signal = ema9[ema9.length - 1] > ema21[ema21.length - 1] ? 'BUY 📈' : 'SELL 📉';
+
+    document.getElementById("signal").innerText = `Signal IA : ${signal}`;
+
+    const ctx = document.getElementById("chart").getContext("2d");
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: prices.map((_, i) => `T${i}`),
+        datasets: [
+          {
+            label: "Prix",
+            data: prices,
+            borderColor: "cyan",
+            borderWidth: 2,
+            fill: false,
+          },
+          {
+            label: "EMA 9",
+            data: ema9,
+            borderColor: "orange",
+            borderWidth: 1,
+            fill: false,
+          },
+          {
+            label: "EMA 21",
+            data: ema21,
+            borderColor: "lime",
+            borderWidth: 1,
+            fill: false,
+          },
+          {
+            label: "ZigZag",
+            data: zigzagData,
+            borderColor: "magenta",
+            borderDash: [5, 5],
+            borderWidth: 2,
+            spanGaps: true,
+            fill: false,
+          },
+        ],
+      },
+      options: {
+        plugins: { legend: { labels: { color: "#fff" } } },
+        scales: {
+          x: { ticks: { color: "#ccc" } },
+          y: { ticks: { color: "#ccc" } },
+        },
+      },
+    });
+  </script></body>
 </html>
