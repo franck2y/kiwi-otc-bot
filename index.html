@@ -3,123 +3,182 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>OTC Bot IA Locale</title>
+  <title>OTC Bot avec RSI + EMA</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background: #111; color: #fff; font-family: sans-serif; padding: 1rem; }
-    select, button { width: 100%; padding: 10px; margin-bottom: 10px; font-size: 18px; }
-    .countdown { font-size: 22px; margin-top: 10px; color: #0f0; }
-    canvas { background: #fff; border-radius: 10px; margin-top: 20px; }
+    body {
+      background-color: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    select, button {
+      font-size: 18px;
+      padding: 10px;
+      margin: 10px;
+    }
+    .signal-box {
+      margin-top: 20px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .countdown {
+      color: #0f0;
+      margin-top: 10px;
+      font-size: 20px;
+    }
+    canvas {
+      margin-top: 20px;
+      background: #222;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <h2>🤖 OTC Bot avec RSI + EMA</h2>
-
-  <select id="pair">
+  <select id="pairSelect">
     <option value="EUR/USD">EUR/USD</option>
     <option value="GBP/JPY">GBP/JPY</option>
   </select>
-
   <button onclick="startBot()">Démarrer le Bot</button>
-  <div id="signalBox"></div>
   <div class="countdown" id="countdown">Prochain signal dans 60s</div>
+  <div class="signal-box" id="signalBox"></div>
   <canvas id="chart" width="400" height="200"></canvas>
 
   <script>
-    let chart, interval, countdown, remaining = 60;
+    let interval;
+    let seconds = 60;
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Cours',
+            data: [],
+            borderColor: 'cyan',
+            fill: false,
+          },
+          {
+            label: 'RSI',
+            data: [],
+            borderColor: 'orange',
+            fill: false,
+          },
+          {
+            label: 'EMA',
+            data: [],
+            borderColor: 'lime',
+            fill: false,
+          },
+        ]
+      },
+      options: {
+        scales: {
+          x: {
+            ticks: { color: '#fff' },
+          },
+          y: {
+            ticks: { color: '#fff' },
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: '#fff' }
+          }
+        }
+      }
+    });
 
     function startBot() {
-      if (interval) clearInterval(interval);
-      nextSignal();
-      interval = setInterval(nextSignal, 60000);
+      clearInterval(interval);
+      updateBot();
+      interval = setInterval(updateBot, 60000);
       startCountdown();
     }
 
     function startCountdown() {
-      clearInterval(countdown);
-      countdown = setInterval(() => {
-        remaining--;
-        document.getElementById("countdown").innerText = `Prochain signal dans ${remaining}s`;
-        if (remaining <= 0) remaining = 60;
+      seconds = 60;
+      const countdown = document.getElementById("countdown");
+      const timer = setInterval(() => {
+        seconds--;
+        countdown.textContent = `Prochain signal dans ${seconds}s`;
+        if (seconds <= 0) clearInterval(timer);
       }, 1000);
     }
 
-    async function nextSignal() {
-      const symbol = document.getElementById("pair").value.replace("/", "");
-      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&outputsize=100&apikey=demo`;
+    async function updateBot() {
+      const pair = document.getElementById("pairSelect").value.replace("/", "");
+      const url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=100&apikey=05d7b73a43a14818905654f8fbbe42f2`;
+
       const res = await fetch(url);
       const data = await res.json();
-      if (!data || !data.values) return;
 
-      const closes = data.values.map(v => parseFloat(v.close)).reverse();
-
-      const rsi = calcRSI(closes, 14);
-      const ema5 = calcEMA(closes, 5);
-      const ema20 = calcEMA(closes, 20);
-
-      const last = closes.length - 1;
-      const signal = (rsi[last] < 30 || ema5[last] > ema20[last]) ? 'UP' :
-                     (rsi[last] > 70 || ema5[last] < ema20[last]) ? 'DOWN' : 'NEUTRE';
-      const confidence = Math.floor(Math.random() * 20 + 70);
-      const color = signal === 'UP' ? '#0f0' : signal === 'DOWN' ? '#f00' : '#ccc';
-
-      document.getElementById("signalBox").innerHTML = `
-        <p>🔍 RSI: ${rsi[last].toFixed(2)} | EMA5: ${ema5[last].toFixed(4)} | EMA20: ${ema20[last].toFixed(4)}</p>
-        <h3>Signal IA: <span style='color:${color}'>${signal}</span></h3>
-        <p>🎯 Confiance: ${confidence}%</p>
-      `;
-
-      drawChart(closes.slice(-30));
-      remaining = 60;
-    }
-
-    function calcEMA(data, period) {
-      const k = 2 / (period + 1);
-      let ema = [data[0]];
-      for (let i = 1; i < data.length; i++) {
-        ema.push(data[i] * k + ema[i - 1] * (1 - k));
+      if (!data || !data.values) {
+        document.getElementById("signalBox").innerHTML = "<p style='color:red'>Erreur de récupération des données</p>";
+        return;
       }
-      return ema;
+
+      const prices = data.values.reverse().map(d => parseFloat(d.close));
+      const labels = data.values.map(d => d.datetime.split(" ")[1]);
+
+      const rsi = calculateRSI(prices, 14);
+      const ema = calculateEMA(prices, 14);
+
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = prices;
+      chart.data.datasets[1].data = rsi;
+      chart.data.datasets[2].data = ema;
+      chart.update();
+
+      const lastRSI = rsi[rsi.length - 1];
+      const lastPrice = prices[prices.length - 1];
+      const lastEMA = ema[ema.length - 1];
+
+      let signal = "NEUTRE";
+      if (lastRSI < 30 && lastPrice > lastEMA) signal = "⬆️ UP";
+      else if (lastRSI > 70 && lastPrice < lastEMA) signal = "⬇️ DOWN";
+
+      document.getElementById("signalBox").innerText = `Signal IA : ${signal}`;
     }
 
-    function calcRSI(data, period) {
-      let rsi = [];
+    function calculateEMA(prices, period) {
+      const k = 2 / (period + 1);
+      const emaArray = [prices[0]];
+      for (let i = 1; i < prices.length; i++) {
+        emaArray.push(prices[i] * k + emaArray[i - 1] * (1 - k));
+      }
+      return emaArray;
+    }
+
+    function calculateRSI(prices, period) {
       let gains = 0, losses = 0;
       for (let i = 1; i <= period; i++) {
-        const diff = data[i] - data[i - 1];
-        if (diff >= 0) gains += diff; else losses -= diff;
+        let diff = prices[i] - prices[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
       }
-      rsi[period] = 100 - (100 / (1 + gains / losses));
-      for (let i = period + 1; i < data.length; i++) {
-        const diff = data[i] - data[i - 1];
-        const gain = diff >= 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-        gains = (gains * (period - 1) + gain) / period;
-        losses = (losses * (period - 1) + loss) / period;
-        rsi[i] = 100 - (100 / (1 + gains / losses));
-      }
-      return rsi;
-    }
+      let avgGain = gains / period;
+      let avgLoss = losses / period;
+      const rsiArray = [100 - (100 / (1 + (avgGain / avgLoss)))];
 
-    function drawChart(closes) {
-      const ctx = document.getElementById("chart").getContext("2d");
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: closes.map((_, i) => i),
-          datasets: [{
-            label: 'Clôtures',
-            data: closes,
-            borderColor: '#0cf',
-            tension: 0.2
-          }]
-        },
-        options: {
-          scales: { y: { beginAtZero: false } }
+      for (let i = period + 1; i < prices.length; i++) {
+        let diff = prices[i] - prices[i - 1];
+        if (diff >= 0) {
+          avgGain = (avgGain * (period - 1) + diff) / period;
+          avgLoss = (avgLoss * (period - 1)) / period;
+        } else {
+          avgGain = (avgGain * (period - 1)) / period;
+          avgLoss = (avgLoss * (period - 1) - diff) / period;
         }
-      });
+        rsiArray.push(100 - (100 / (1 + (avgGain / avgLoss))));
+      }
+      while (rsiArray.length < prices.length) rsiArray.unshift(null);
+      return rsiArray;
     }
   </script>
 </body>
-    </html>
+</html>
