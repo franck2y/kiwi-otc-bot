@@ -2,7 +2,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pocket Option + Bot de Signal</title>
+  <title>Bot IA Locale + Pocket Option</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -28,61 +28,105 @@
       padding: 15px;
       border-radius: 8px;
       width: 90%;
-      max-width: 600px;
+      max-width: 800px;
     }
-    button {
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
       padding: 10px;
-      margin: 5px;
-      font-size: 16px;
+      text-align: center;
+      border: 1px solid #333;
     }
-    canvas {
-      margin-top: 20px;
-      background: #fff;
-      border-radius: 5px;
-    }
+    .buy { color: lime; }
+    .sell { color: red; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>🔐 Pocket Option (connexion manuelle)</h2>
+    <h2>🔐 Connexion Pocket Option (manuelle)</h2>
     <iframe src="https://pocketoption.com" title="Pocket Option"></iframe><div class="bot-box">
-  <h3>🤖 Bot de Signaux RSI/EMA</h3>
-  <p>Paire sélectionnée : <strong id="pairName">EUR/USD</strong></p>
-  <button onclick="showSignal('UP')">⬆️ Signal UP</button>
-  <button onclick="showSignal('DOWN')">⬇️ Signal DOWN</button>
-  <p id="signalResult"></p>
-  <canvas id="signalChart" width="400" height="200"></canvas>
+  <h3>🤖 Signaux AI Locale (RSI + EMA)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Paire</th>
+        <th>EMA 9</th>
+        <th>EMA 21</th>
+        <th>RSI 14</th>
+        <th>Signal</th>
+      </tr>
+    </thead>
+    <tbody id="signalTable"></tbody>
+  </table>
 </div>
 
   </div>  <script>
-    let chart;
-    const ctx = document.getElementById('signalChart').getContext('2d');
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Signaux',
-          data: [],
-          backgroundColor: []
-        }]
-      },
-      options: {
-        scales: {
-          y: { beginAtZero: true, max: 1 }
-        }
+    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF"];
+
+    function generateFakePrices(len = 30, start = 1.1) {
+      let data = [start];
+      for (let i = 1; i < len; i++) {
+        data.push(data[i - 1] + (Math.random() - 0.5) * 0.01);
       }
-    });
-
-    function showSignal(direction) {
-      const now = new Date().toLocaleTimeString();
-      const result = document.getElementById('signalResult');
-      result.textContent = `📊 Signal ${direction} à ${now}`;
-
-      chart.data.labels.push(now);
-      chart.data.datasets[0].data.push(direction === 'UP' ? 1 : 0);
-      chart.data.datasets[0].backgroundColor.push(direction === 'UP' ? 'lime' : 'red');
-      chart.update();
+      return data;
     }
+
+    function calcEMA(prices, period) {
+      let k = 2 / (period + 1);
+      let ema = [prices[0]];
+      for (let i = 1; i < prices.length; i++) {
+        ema.push(prices[i] * k + ema[i - 1] * (1 - k));
+      }
+      return ema;
+    }
+
+    function calcRSI(prices, period = 14) {
+      let gains = 0, losses = 0;
+      for (let i = 1; i <= period; i++) {
+        let change = prices[i] - prices[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+      }
+      let rs = gains / (losses || 1);
+      return 100 - (100 / (1 + rs));
+    }
+
+    function updateSignals() {
+      const table = document.getElementById('signalTable');
+      table.innerHTML = '';
+
+      pairs.forEach(pair => {
+        let prices = generateFakePrices(30, 1.1);
+        let ema9 = calcEMA(prices, 9).pop().toFixed(5);
+        let ema21 = calcEMA(prices, 21).pop().toFixed(5);
+        let rsi = calcRSI(prices).toFixed(2);
+
+        let signal = '⏳';
+        let signalClass = '';
+
+        if (ema9 > ema21 && rsi < 70) {
+          signal = '⬆️ BUY';
+          signalClass = 'buy';
+        } else if (ema9 < ema21 && rsi > 30) {
+          signal = '⬇️ SELL';
+          signalClass = 'sell';
+        }
+
+        const row = `<tr>
+          <td>${pair}</td>
+          <td>${ema9}</td>
+          <td>${ema21}</td>
+          <td>${rsi}</td>
+          <td class="${signalClass}">${signal}</td>
+        </tr>`;
+        table.innerHTML += row;
+      });
+    }
+
+    updateSignals();
+    setInterval(updateSignals, 60000); // mise à jour toutes les 60s
   </script></body>
 </html>
