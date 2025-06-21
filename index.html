@@ -18,6 +18,9 @@
     .buy { color: #0f0; }
     .sell { color: #f00; }
     .signal-table { max-width: 100%; overflow-x: auto; }
+    #debug { background: #000; color: lime; font-size: 12px; padding: 10px; margin-top: 20px; white-space: pre-wrap; border-radius: 5px; }
+    #trade-alert { background: #1e1e1e; border: 2px solid #fff500; padding: 15px; margin-top: 10px; font-size: 18px; border-radius: 8px; color: #fff; display: none; }
+    #trade-countdown { font-size: 24px; color: #fff500; margin-top: 10px; display: none; }
   </style>
 </head>
 <body>
@@ -28,7 +31,8 @@
     <option value="GBP/USD">GBP/USD</option>
     <option value="USD/JPY">USD/JPY</option>
   </select>
-  <button onclick="startBot()">Démarrer le Bot</button>  <div class="container">
+  <button onclick="startBot()">Démarrer le Bot</button>  <div id="trade-alert"></div>
+  <div id="trade-countdown"></div>  <div class="container">
     <h3 id="next-signal">Prochain signal dans 60s</h3>
     <canvas id="chart" width="400" height="200"></canvas><div class="signal-table">
   <table>
@@ -46,9 +50,15 @@
   </table>
 </div>
 
-  </div>  <script>
+  </div>  <div id="debug">Chargement du debug...</div>  <script>
+    const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
+
     let countdown = 60;
+    let tradeCountdown = null;
     let countdownEl = document.getElementById('next-signal');
+    const debugBox = document.getElementById('debug');
+    const tradeAlert = document.getElementById('trade-alert');
+    const tradeCountdownEl = document.getElementById('trade-countdown');
 
     setInterval(() => {
       countdown--;
@@ -58,6 +68,24 @@
       }
       countdownEl.textContent = `Prochain signal dans ${countdown}s`;
     }, 1000);
+
+    function startTradeCountdown() {
+      let seconds = 60;
+      tradeCountdownEl.style.display = 'block';
+      tradeCountdownEl.textContent = `⏳ Temps restant pour le trade : ${seconds}s`;
+
+      if (tradeCountdown) clearInterval(tradeCountdown);
+
+      tradeCountdown = setInterval(() => {
+        seconds--;
+        if (seconds <= 0) {
+          clearInterval(tradeCountdown);
+          tradeCountdownEl.style.display = 'none';
+        } else {
+          tradeCountdownEl.textContent = `⏳ Temps restant pour le trade : ${seconds}s`;
+        }
+      }, 1000);
+    }
 
     const chart = new Chart(document.getElementById('chart').getContext('2d'), {
       type: 'candlestick',
@@ -70,30 +98,105 @@
       }
     });
 
+    function calculateEMA(data, period) {
+      const k = 2 / (period + 1);
+      let emaArray = [data[0]];
+      for (let i = 1; i < data.length; i++) {
+        emaArray.push(data[i] * k + emaArray[i - 1] * (1 - k));
+      }
+      return emaArray;
+    }
+
+    function calculateRSI(prices, period = 14) {
+      let gains = 0, losses = 0;
+      for (let i = 1; i <= period; i++) {
+        const diff = prices[i] - prices[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
+      }
+      const rs = gains / losses;
+      return 100 - 100 / (1 + rs);
+    }
+
+    function calculateZigZag(data, deviation = 0.0005) {
+      let result = [data[0]];
+      let direction = 0;
+      for (let i = 1; i < data.length; i++) {
+        const diff = data[i] - result[result.length - 1];
+        if (direction >= 0 && diff >= deviation) {
+          direction = 1;
+          result.push(data[i]);
+        } else if (direction <= 0 && diff <= -deviation) {
+          direction = -1;
+          result.push(data[i]);
+        } else {
+          result.push(null);
+        }
+      }
+      return result;
+    }
+
+    async function fetchData(symbol) {
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&apikey=${apiKey}&outputsize=30&format=JSON`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!data || !data.values) return null;
+      return data.values.reverse().map(v => ({
+        time: v.datetime,
+        open: parseFloat(v.open),
+        high: parseFloat(v.high),
+        low: parseFloat(v.low),
+        close: parseFloat(v.close)
+      }));
+    }
+
     async function updateSignals() {
-      const pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY'];
+      const pairs = {
+        "EUR/USD": "EUR/USD",
+        "GBP/USD": "GBP/USD",
+        "USD/JPY": "USD/JPY"
+      };
+
       const signalBody = document.getElementById('signal-body');
       signalBody.innerHTML = '';
+      let debugText = '[SOURCE: TwelveData API]\n';
+      let triggeredSignal = null;
 
-      for (const pair of pairs) {
-        // Simule des données
-        const ema9 = (1 + Math.random()).toFixed(5);
-        const ema21 = (1 + Math.random()).toFixed(5);
-        const rsi = (Math.random() * 100).toFixed(2);
-        const zigzag = Math.random() > 0.5 ? '↗️' : '↘️';
-        const signal = (rsi < 30 && ema9 > ema21) ? 'BUY' : (rsi > 70 && ema9 < ema21) ? 'SELL' : 'WAIT';
+      for (const label in pairs) {
+        const symbol = pairs[label];
+        const candles = await fetchData(symbol);
+        if (!candles) continue;
+
+        const closes = candles.map(c => c.close);
+        const ema9 = calculateEMA(closes, 9);
+        const ema21 = calculateEMA(closes, 21);
+        const rsi = calculateRSI(closes);
+        const zigzag = calculateZigZag(closes);
+
+        const signal = (rsi < 30 && ema9.at(-1) > ema21.at(-1)) ? 'BUY' : (rsi > 70 && ema9.at(-1) < ema21.at(-1)) ? 'SELL' : 'WAIT';
+
+        if (signal === 'BUY' || signal === 'SELL') {
+          triggeredSignal = `🟢 SIGNAL DÉTECTÉ : ${label} → ${signal}\n📈 Expiration recommandée : 1 Minute\n⏱ Lancer le trade maintenant sur Pocket Option !`;
+          startTradeCountdown();
+        }
+
+        debugText += `\n${label}:\n EMA9: ${ema9.at(-1).toFixed(5)}, EMA21: ${ema21.at(-1).toFixed(5)}, RSI: ${rsi.toFixed(2)}, Signal: ${signal}`;
 
         const row = `
           <tr>
-            <td>${pair}</td>
-            <td>${ema9}</td>
-            <td>${ema21}</td>
-            <td>${rsi}</td>
-            <td>${zigzag}</td>
+            <td>${label}</td>
+            <td>${ema9.at(-1).toFixed(5)}</td>
+            <td>${ema21.at(-1).toFixed(5)}</td>
+            <td>${rsi.toFixed(2)}</td>
+            <td>${zigzag.at(-1) ? '↗️' : '↘️'}</td>
             <td class="${signal === 'BUY' ? 'buy' : signal === 'SELL' ? 'sell' : ''}">${signal}</td>
           </tr>`;
         signalBody.innerHTML += row;
       }
+
+      tradeAlert.style.display = triggeredSignal ? 'block' : 'none';
+      tradeAlert.textContent = triggeredSignal || '';
+      debugBox.textContent = debugText;
     }
 
     function startBot() {
