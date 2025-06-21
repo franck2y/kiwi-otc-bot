@@ -1,165 +1,100 @@
-<!DOCTYPE html>
-<html lang="fr">
+<!DOCTYPE html><html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🤖 OTC Bot avec RSI + EMA</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion Pocket Option + Signaux</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      background-color: #111;
-      color: white;
       font-family: sans-serif;
-      text-align: center;
+      background-color: #121212;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
     }
-    select, button {
+    input, button {
+      margin: 8px;
       padding: 10px;
-      margin: 10px;
       font-size: 16px;
     }
-    .countdown {
-      font-size: 20px;
+    .signal-box {
       margin-top: 20px;
-      color: lime;
-    }
-    .error {
-      color: red;
-      margin-top: 10px;
+      padding: 10px;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 5px;
+      width: 90%;
+      max-width: 600px;
     }
     canvas {
       margin-top: 20px;
-      background-color: #000;
+      background: #fff;
+      border-radius: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>🤖 OTC Bot avec RSI + EMA</h1>
+  <h2>🔐 Connexion à Pocket Option</h2>  <form id="loginForm">
+    <input type="email" id="email" placeholder="Email Pocket Option" required><br>
+    <input type="password" id="password" placeholder="Mot de passe" required><br>
+    <button type="submit">Se connecter</button>
+  </form>  <div id="loginResult"></div>  <div class="signal-box" id="signalBox" style="display: none;">
+    <h3>📈 Signaux de Trading</h3>
+    <p>Devise sélectionnée : <strong id="pairName">EUR/USD</strong></p>
+    <button onclick="showSignal('UP')">⬆️ Signal UP</button>
+    <button onclick="showSignal('DOWN')">⬇️ Signal DOWN</button>
+    <p id="signalResult"></p>
+    <canvas id="signalChart" width="400" height="200"></canvas>
+  </div>  <script>
+    const loginForm = document.getElementById('loginForm');
+    const signalBox = document.getElementById('signalBox');
+    const loginResult = document.getElementById('loginResult');
+    const signalResult = document.getElementById('signalResult');
+    let signalTimes = [];
+    let signalDirections = [];
 
-  <select id="pairSelect">
-    <option value="EUR/USD">EUR/USD</option>
-    <option value="GBP/JPY">GBP/JPY</option>
-  </select>
-  <button onclick="startBot()">Démarrer le Bot</button>
-
-  <div class="countdown" id="countdown">Prochain signal dans 60s</div>
-  <div class="error" id="errorMsg"></div>
-
-  <canvas id="chart" width="350" height="300"></canvas>
-
-  <script>
-    let countdown = 60;
-    let chart;
-
-    async function fetchData(pair) {
-      const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
-      const url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=20&apikey=${apiKey}`;
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.status === "error") throw new Error(data.message);
-        return data.values.reverse();
-      } catch (e) {
-        document.getElementById("errorMsg").innerText = "Erreur de récupération des données";
-        return null;
-      }
-    }
-
-    function calculateEMA(data, period = 14) {
-      let k = 2 / (period + 1);
-      let ema = [parseFloat(data[0].close)];
-      for (let i = 1; i < data.length; i++) {
-        ema.push(data[i].close * k + ema[i - 1] * (1 - k));
-      }
-      return ema;
-    }
-
-    function calculateRSI(data, period = 14) {
-      let gains = 0, losses = 0;
-      for (let i = 1; i <= period; i++) {
-        const change = data[i].close - data[i - 1].close;
-        if (change > 0) gains += change;
-        else losses -= change;
-      }
-      let avgGain = gains / period;
-      let avgLoss = losses / period;
-      let rs = avgGain / avgLoss;
-      return 100 - 100 / (1 + rs);
-    }
-
-    function drawChart(data, ema, rsi) {
-      const labels = data.map(d => d.datetime.slice(11, 16));
-      const prices = data.map(d => parseFloat(d.close));
-
-      const ctx = document.getElementById("chart").getContext("2d");
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: "Cours",
-              data: prices,
-              borderColor: "cyan",
-              fill: false,
-            },
-            {
-              label: "EMA",
-              data: ema,
-              borderColor: "lime",
-              fill: false,
-            },
-            {
-              label: "RSI (ligne)",
-              data: Array(data.length).fill(rsi),
-              borderColor: "orange",
-              borderDash: [5, 5],
-              fill: false,
-            },
-          ]
-        },
-        options: {
-          scales: {
-            y: {
-              beginAtZero: false,
-            }
-          }
+    const ctx = document.getElementById('signalChart').getContext('2d');
+    const signalChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Signaux',
+          data: [],
+          backgroundColor: [],
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true, max: 1 }
         }
-      });
+      }
+    });
+
+    loginForm.addEventListener('submit', function(event) {
+      event.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      if (email && password) {
+        loginResult.textContent = "✅ Connexion simulée réussie.";
+        signalBox.style.display = 'block';
+      } else {
+        loginResult.textContent = "❌ Échec de la connexion.";
+        signalBox.style.display = 'none';
+      }
+    });
+
+    function showSignal(direction) {
+      const now = new Date().toLocaleTimeString();
+      signalResult.textContent = `📊 Signal ${direction} à ${now}`;
+
+      signalChart.data.labels.push(now);
+      signalChart.data.datasets[0].data.push(direction === 'UP' ? 1 : 0);
+      signalChart.data.datasets[0].backgroundColor.push(direction === 'UP' ? 'limegreen' : 'red');
+      signalChart.update();
     }
-
-    async function startBot() {
-      const pair = document.getElementById("pairSelect").value; // pas de replace ici !
-      document.getElementById("errorMsg").innerText = "";
-      const data = await fetchData(pair);
-      if (!data) return;
-
-      const ema = calculateEMA(data);
-      const rsi = calculateRSI(data);
-      drawChart(data, ema, rsi);
-
-      // Affiche le signal
-      const lastClose = parseFloat(data.at(-1).close);
-      const lastEMA = ema.at(-1);
-      const signal = (lastClose > lastEMA && rsi < 70) ? "⬆️ UP" :
-                     (lastClose < lastEMA && rsi > 30) ? "⬇️ DOWN" :
-                     "❌ PAS DE SIGNAL";
-      document.getElementById("countdown").innerText = `Signal: ${signal}`;
-
-      countdown = 60;
-      clearInterval(timerLoop);
-      timerLoop = setInterval(() => {
-        countdown--;
-        if (countdown <= 0) {
-          clearInterval(timerLoop);
-          startBot();
-        } else {
-          document.getElementById("countdown").innerText = `Prochain signal dans ${countdown}s`;
-        }
-      }, 1000);
-    }
-
-    let timerLoop;
-  </script>
-</body>
+  </script></body>
 </html>
