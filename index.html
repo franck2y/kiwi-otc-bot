@@ -1,124 +1,126 @@
 <!DOCTYPE html><html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📊 OTC Bot - Price Action</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
-  <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📈 OTC Bot - Signaux par Price Action</title>
   <style>
-    body { font-family: sans-serif; background: #111; color: #fff; padding: 10px; }
-    select, button { font-size: 16px; margin: 5px; padding: 5px; }
-    .container { margin-top: 20px; }
-    canvas { background: #222; border-radius: 10px; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #1b1b1b; }
-    th, td { padding: 8px; border: 1px solid #333; text-align: center; }
-    th { background: #333; }
-    .buy { color: #0f0; }
-    .sell { color: #f00; }
-    .wait { color: #ccc; }
-    #next-signal { margin-top: 10px; font-size: 18px; }
+    body {
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 10px;
+    }
+    select, button {
+      padding: 8px;
+      margin-right: 10px;
+      font-size: 16px;
+    }
+    table {
+      width: 100%;
+      margin-top: 15px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background: #222;
+    }
+    .signal {
+      font-weight: bold;
+    }
+    .tradingview-widget-container {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
-  <h2>📊 OTC Bot - Signaux par Price Action</h2><label for="pair">Paire :</label> <select id="pair"> <option value="EUR/USD">EUR/USD</option> <option value="GBP/USD">GBP/USD</option> <option value="USD/JPY">USD/JPY</option> </select>
-
-<button onclick="startBot()">Démarrer le bot</button>
-
-  <div id="next-signal">Prochain signal dans 60s</div>
-  <div class="container">
-    <canvas id="chart" width="400" height="200"></canvas>
+  <h2>📈 OTC Bot - Signaux par Price Action</h2>
+  <label for="pair">Paire :</label>
+  <select id="pair">
+    <option value="EURUSD">EUR/USD</option>
+    <option value="GBPUSD">GBP/USD</option>
+    <option value="USDJPY">USD/JPY</option>
+  </select>
+  <button onclick="startBot()">Démarrer le bot</button>
+  <p id="countdown">Prochain signal dans 60s</p>  <!-- Graphique TradingView -->  <div class="tradingview-widget-container">
+    <div id="tradingview_candle"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+      function loadChart(pair) {
+        new TradingView.widget({
+          "width": "100%",
+          "height": 300,
+          "symbol": "OANDA:" + pair,
+          "interval": "1",
+          "timezone": "Etc/UTC",
+          "theme": "dark",
+          "style": "1",
+          "locale": "fr",
+          "toolbar_bg": "#f1f3f6",
+          "enable_publishing": false,
+          "container_id": "tradingview_candle"
+        });
+      }
+      loadChart(document.getElementById("pair").value);
+      document.getElementById("pair").addEventListener("change", function() {
+        loadChart(this.value);
+      });
+    </script>
   </div>  <table>
     <thead>
       <tr>
         <th>Heure</th>
-        <th>O</th><th>H</th><th>L</th><th>C</th>
+        <th>O</th>
+        <th>H</th>
+        <th>L</th>
+        <th>C</th>
         <th>Signal</th>
       </tr>
     </thead>
-    <tbody id="signal-body"></tbody>
+    <tbody id="signalTable">
+      <tr>
+        <td colspan="6">En attente du premier signal...</td>
+      </tr>
+    </tbody>
   </table>  <script>
-    const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
-    const interval = "1min";
     let countdown = 60;
-
     setInterval(() => {
       countdown--;
-      document.getElementById('next-signal').textContent = `Prochain signal dans ${countdown}s`;
-      if (countdown <= 0) {
+      document.getElementById("countdown").innerText = `Prochain signal dans ${countdown}s`;
+      if (countdown === 0) {
         countdown = 60;
-        updateSignal();
+        simulateCandle();
       }
     }, 1000);
 
-    async function fetchData(symbol) {
-      const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&apikey=${apiKey}&outputsize=5`);
-      const json = await res.json();
-      return json.values ? json.values.reverse().map(v => ({
-        time: v.datetime,
-        open: +v.open,
-        high: +v.high,
-        low: +v.low,
-        close: +v.close
-      })) : null;
-    }
+    function simulateCandle() {
+      const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+      const open = (Math.random() * (1.15 - 1.10) + 1.10).toFixed(5);
+      const close = (Math.random() * (1.15 - 1.10) + 1.10).toFixed(5);
+      const high = Math.max(open, close).toFixed(5);
+      const low = Math.min(open, close).toFixed(5);
 
-    function generateSignal(candle) {
-      const body = Math.abs(candle.close - candle.open);
-      const total = candle.high - candle.low;
-      if (body / total > 0.6) {
-        return candle.close > candle.open ? 'BUY' : 'SELL';
-      } else {
-        return 'WAIT';
-      }
-    }
+      let signal = "WAIT";
+      if (close > open) signal = "BUY";
+      else if (close < open) signal = "SELL";
 
-    async function updateSignal() {
-      const pair = document.getElementById('pair').value;
-      const data = await fetchData(pair);
-      if (!data || data.length < 3) return;
-
-      const last = data[data.length - 1];
-      const signal = generateSignal(last);
-
-      document.getElementById('signal-body').innerHTML = `
+      const row = `
         <tr>
-          <td>${last.time}</td>
-          <td>${last.open.toFixed(5)}</td>
-          <td>${last.high.toFixed(5)}</td>
-          <td>${last.low.toFixed(5)}</td>
-          <td>${last.close.toFixed(5)}</td>
-          <td class="${signal.toLowerCase()}"><b>${signal}</b></td>
+          <td>${now}</td>
+          <td>${open}</td>
+          <td>${high}</td>
+          <td>${low}</td>
+          <td>${close}</td>
+          <td class="signal">${signal}</td>
         </tr>
       `;
 
-      renderChart(data, pair);
-    }
-
-    function renderChart(data, label) {
-      const ctx = document.getElementById('chart').getContext('2d');
-      if (window.priceChart) window.priceChart.destroy();
-      window.priceChart = new Chart(ctx, {
-        type: 'candlestick',
-        data: {
-          datasets: [{
-            label: label,
-            data: data.map(d => ({ x: d.time, o: d.open, h: d.high, l: d.low, c: d.close }))
-          }]
-        },
-        options: {
-          scales: {
-            x: { type: 'timeseries', time: { unit: 'minute' } },
-            y: { beginAtZero: false }
-          },
-          plugins: { legend: { display: false } }
-        }
-      });
-    }
-
-    function startBot() {
-      updateSignal();
+      const table = document.getElementById("signalTable");
+      if (table.children[0].children[0].cells[0].colSpan) table.innerHTML = row;
+      else table.innerHTML = row + table.innerHTML;
     }
   </script></body>
 </html>
