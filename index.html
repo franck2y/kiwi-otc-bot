@@ -2,50 +2,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📊 OTC Bot avec Fractals</title>
+  <title>📊 OTC Bot - Price Action</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
   <style>
     body { font-family: sans-serif; background: #111; color: #fff; padding: 10px; }
-    select, button, input { font-size: 16px; margin: 5px; padding: 5px; }
+    select, button { font-size: 16px; margin: 5px; padding: 5px; }
     .container { margin-top: 20px; }
     canvas { background: #222; border-radius: 10px; margin-bottom: 20px; }
-    table { width: 100%; margin-top: 20px; border-collapse: collapse; background: #1b1b1b; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #1b1b1b; }
     th, td { padding: 8px; border: 1px solid #333; text-align: center; }
     th { background: #333; }
     .buy { color: #0f0; }
     .sell { color: #f00; }
-    .signal-table { max-width: 100%; overflow-x: auto; }
-    #debug { background: #000; color: lime; font-size: 12px; padding: 10px; margin-top: 20px; white-space: pre-wrap; border-radius: 5px; }
-    #trade-alert { background: #1e1e1e; border: 2px solid #fff500; padding: 15px; margin-top: 10px; font-size: 18px; border-radius: 8px; color: #fff; display: none; }
-    #trade-countdown { font-size: 24px; color: #fff500; margin-top: 10px; display: none; }
+    .wait { color: #ccc; }
+    #next-signal { margin-top: 10px; font-size: 18px; }
   </style>
 </head>
 <body>
-  <h2>📊 OTC Bot avec Fractals</h2><label for="interval">⏱ Timeframe :</label> <select id="interval"> <option value="1min">1 Minute</option> <option value="5min">5 Minutes</option> <option value="15min">15 Minutes</option> </select>
+  <h2>📊 OTC Bot - Signaux par Price Action</h2><label for="pair">Paire :</label> <select id="pair"> <option value="EUR/USD">EUR/USD</option> <option value="GBP/USD">GBP/USD</option> <option value="USD/JPY">USD/JPY</option> </select>
 
-<label>Bougies gauche :</label> <input type="number" id="leftDepth" value="2" min="1" max="5" />
+<button onclick="startBot()">Démarrer le bot</button>
 
-<label>Bougies droite :</label> <input type="number" id="rightDepth" value="2" min="1" max="5" />
-
-<button onclick="startBot()">Démarrer</button> <button onclick="downloadSignals()">📥 Télécharger les signaux</button>
-
-  <div id="trade-alert"></div>
-  <div id="trade-countdown"></div>
-  <div id="next-signal">Prochain signal dans 60s</div>  <div class="container" id="charts"></div>  <div class="signal-table">
-    <table>
-      <thead>
-        <tr><th>Paire</th><th>Fractal</th><th>Signal</th><th>Heure</th></tr>
-      </thead>
-      <tbody id="signal-body"></tbody>
-    </table>
-  </div>  <div id="debug"></div>
-  <audio id="notifSound" src="https://notificationsounds.com/storage/sounds/file-sounds-1155-pristine.mp3"></audio>  <script>
+  <div id="next-signal">Prochain signal dans 60s</div>
+  <div class="container">
+    <canvas id="chart" width="400" height="200"></canvas>
+  </div>  <table>
+    <thead>
+      <tr>
+        <th>Heure</th>
+        <th>O</th><th>H</th><th>L</th><th>C</th>
+        <th>Signal</th>
+      </tr>
+    </thead>
+    <tbody id="signal-body"></tbody>
+  </table>  <script>
     const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
-    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CHF", "NZD/USD"];
-    const signalLogs = [];
+    const interval = "1min";
     let countdown = 60;
 
     setInterval(() => {
@@ -53,82 +48,77 @@
       document.getElementById('next-signal').textContent = `Prochain signal dans ${countdown}s`;
       if (countdown <= 0) {
         countdown = 60;
-        updateSignals();
+        updateSignal();
       }
     }, 1000);
 
-    function detectFractal(data, left, right) {
-      const result = new Array(data.length).fill('');
-      for (let i = left; i < data.length - right; i++) {
-        const isTop = [...Array(left).keys()].every(j => data[i].high > data[i-j-1].high) &&
-                      [...Array(right).keys()].every(j => data[i].high > data[i+j+1].high);
-        const isBottom = [...Array(left).keys()].every(j => data[i].low < data[i-j-1].low) &&
-                         [...Array(right).keys()].every(j => data[i].low < data[i+j+1].low);
-        if (isTop) result[i] = '⬆️';
-        else if (isBottom) result[i] = '⬇️';
-      }
-      return result;
-    }
-
-    async function fetchData(symbol, interval) {
-      const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&apikey=${apiKey}&outputsize=50`);
+    async function fetchData(symbol) {
+      const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&apikey=${apiKey}&outputsize=5`);
       const json = await res.json();
       return json.values ? json.values.reverse().map(v => ({
         time: v.datetime,
-        open: +v.open, high: +v.high, low: +v.low, close: +v.close
+        open: +v.open,
+        high: +v.high,
+        low: +v.low,
+        close: +v.close
       })) : null;
     }
 
-    async function updateSignals() {
-      const interval = document.getElementById('interval').value;
-      const left = +document.getElementById('leftDepth').value;
-      const right = +document.getElementById('rightDepth').value;
-      const signalBody = document.getElementById('signal-body');
-      signalBody.innerHTML = '';
-      document.getElementById('charts').innerHTML = '';
-
-      for (let pair of pairs) {
-        const canvas = document.createElement('canvas');
-        document.getElementById('charts').appendChild(canvas);
-        const data = await fetchData(pair, interval);
-        if (!data) continue;
-
-        const fractals = detectFractal(data, left, right);
-        const last = fractals.at(-1);
-        const signal = last === '⬆️' ? 'SELL' : last === '⬇️' ? 'BUY' : 'WAIT';
-        const now = new Date().toLocaleTimeString();
-        signalLogs.push(`${now} | ${pair} | ${last} | ${signal}`);
-        signalBody.innerHTML += `<tr><td>${pair}</td><td>${last}</td><td class='${signal.toLowerCase()}'><b>${signal}</b></td><td>${now}</td></tr>`;
-
-        new Chart(canvas.getContext('2d'), {
-          type: 'candlestick',
-          data: {
-            datasets: [{
-              label: pair,
-              data: data.map(d => ({ x: d.time, o: d.open, h: d.high, l: d.low, c: d.close }))
-            }]
-          },
-          options: {
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { type: 'timeseries', time: { unit: 'minute' } },
-              y: { beginAtZero: false }
-            }
-          }
-        });
+    function generateSignal(candle) {
+      const body = Math.abs(candle.close - candle.open);
+      const total = candle.high - candle.low;
+      if (body / total > 0.6) {
+        return candle.close > candle.open ? 'BUY' : 'SELL';
+      } else {
+        return 'WAIT';
       }
     }
 
-    function startBot() {
-      updateSignals();
+    async function updateSignal() {
+      const pair = document.getElementById('pair').value;
+      const data = await fetchData(pair);
+      if (!data || data.length < 3) return;
+
+      const last = data[data.length - 1];
+      const signal = generateSignal(last);
+
+      document.getElementById('signal-body').innerHTML = `
+        <tr>
+          <td>${last.time}</td>
+          <td>${last.open.toFixed(5)}</td>
+          <td>${last.high.toFixed(5)}</td>
+          <td>${last.low.toFixed(5)}</td>
+          <td>${last.close.toFixed(5)}</td>
+          <td class="${signal.toLowerCase()}"><b>${signal}</b></td>
+        </tr>
+      `;
+
+      renderChart(data, pair);
     }
 
-    function downloadSignals() {
-      const blob = new Blob([signalLogs.join('\n')], { type: 'text/plain' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'signals.log';
-      link.click();
+    function renderChart(data, label) {
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (window.priceChart) window.priceChart.destroy();
+      window.priceChart = new Chart(ctx, {
+        type: 'candlestick',
+        data: {
+          datasets: [{
+            label: label,
+            data: data.map(d => ({ x: d.time, o: d.open, h: d.high, l: d.low, c: d.close }))
+          }]
+        },
+        options: {
+          scales: {
+            x: { type: 'timeseries', time: { unit: 'minute' } },
+            y: { beginAtZero: false }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    function startBot() {
+      updateSignal();
     }
   </script></body>
 </html>
