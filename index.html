@@ -2,7 +2,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📊 OTC Bot avec RSI + EMA + ZigZag</title>
+  <title>📊 OTC Bot avec Fractals</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
@@ -11,7 +11,7 @@
     body { font-family: sans-serif; background: #111; color: #fff; padding: 10px; }
     select, button, input { font-size: 16px; margin: 5px; padding: 5px; }
     .container { margin-top: 20px; }
-    canvas { background: #222; border-radius: 10px; }
+    canvas { background: #222; border-radius: 10px; margin-bottom: 20px; }
     table { width: 100%; margin-top: 20px; border-collapse: collapse; background: #1b1b1b; }
     th, td { padding: 8px; border: 1px solid #333; text-align: center; }
     th { background: #333; }
@@ -24,196 +24,111 @@
   </style>
 </head>
 <body>
-  <h2>📊 OTC Bot avec RSI + EMA + ZigZag</h2>
-  <label for="pair">Choisissez une paire :</label>
-  <select id="pair">
-    <option value="EUR/USD">EUR/USD</option>
-    <option value="GBP/USD">GBP/USD</option>
-    <option value="USD/JPY">USD/JPY</option>
-  </select>
-  <button onclick="startBot()">Démarrer le Bot</button>
-  <button onclick="window.open('https://pocketoption.com', '_blank')">🌐 Ouvrir Pocket Option</button>  <div>
-    <label>RSI Période: <input id="rsiPeriod" type="number" value="14" style="width:60px;"></label>
-    <label>EMA Courte: <input id="emaShort" type="number" value="9" style="width:60px;"></label>
-    <label>EMA Longue: <input id="emaLong" type="number" value="21" style="width:60px;"></label>
-  </div>  <div id="trade-alert"></div>
-  <div id="trade-countdown"></div>  <div class="container">
-    <h3 id="next-signal">Prochain signal dans 60s</h3>
-    <canvas id="chart" width="400" height="200"></canvas><div class="signal-table">
-  <table>
-    <thead>
-      <tr>
-        <th>Paire</th>
-        <th>EMA 9</th>
-        <th>EMA 21</th>
-        <th>RSI</th>
-        <th>ZigZag</th>
-        <th>Signal</th>
-      </tr>
-    </thead>
-    <tbody id="signal-body"></tbody>
-  </table>
-</div>
+  <h2>📊 OTC Bot avec Fractals</h2><label for="interval">⏱ Timeframe :</label> <select id="interval"> <option value="1min">1 Minute</option> <option value="5min">5 Minutes</option> <option value="15min">15 Minutes</option> </select>
 
-  </div>  <div id="debug">Chargement du debug...</div><audio id="notifSound" src="https://notificationsounds.com/storage/sounds/file-sounds-1155-pristine.mp3"></audio>
+<label>Bougies gauche :</label> <input type="number" id="leftDepth" value="2" min="1" max="5" />
 
-  <script>
+<label>Bougies droite :</label> <input type="number" id="rightDepth" value="2" min="1" max="5" />
+
+<button onclick="startBot()">Démarrer</button> <button onclick="downloadSignals()">📥 Télécharger les signaux</button>
+
+  <div id="trade-alert"></div>
+  <div id="trade-countdown"></div>
+  <div id="next-signal">Prochain signal dans 60s</div>  <div class="container" id="charts"></div>  <div class="signal-table">
+    <table>
+      <thead>
+        <tr><th>Paire</th><th>Fractal</th><th>Signal</th><th>Heure</th></tr>
+      </thead>
+      <tbody id="signal-body"></tbody>
+    </table>
+  </div>  <div id="debug"></div>
+  <audio id="notifSound" src="https://notificationsounds.com/storage/sounds/file-sounds-1155-pristine.mp3"></audio>  <script>
     const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
-
+    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CHF", "NZD/USD"];
+    const signalLogs = [];
     let countdown = 60;
-    let tradeCountdown = null;
-    let countdownEl = document.getElementById('next-signal');
-    const debugBox = document.getElementById('debug');
-    const tradeAlert = document.getElementById('trade-alert');
-    const tradeCountdownEl = document.getElementById('trade-countdown');
-    const notifSound = document.getElementById('notifSound');
 
     setInterval(() => {
       countdown--;
+      document.getElementById('next-signal').textContent = `Prochain signal dans ${countdown}s`;
       if (countdown <= 0) {
         countdown = 60;
         updateSignals();
       }
-      countdownEl.textContent = `Prochain signal dans ${countdown}s`;
     }, 1000);
 
-    function startTradeCountdown() {
-      let seconds = 60;
-      tradeCountdownEl.style.display = 'block';
-      tradeCountdownEl.textContent = `⏳ Temps restant pour le trade : ${seconds}s`;
-
-      if (tradeCountdown) clearInterval(tradeCountdown);
-
-      tradeCountdown = setInterval(() => {
-        seconds--;
-        if (seconds <= 0) {
-          clearInterval(tradeCountdown);
-          tradeCountdownEl.style.display = 'none';
-        } else {
-          tradeCountdownEl.textContent = `⏳ Temps restant pour le trade : ${seconds}s`;
-        }
-      }, 1000);
-    }
-
-    const chart = new Chart(document.getElementById('chart').getContext('2d'), {
-      type: 'candlestick',
-      data: { datasets: [{ label: 'Cours', data: [] }] },
-      options: {
-        scales: {
-          x: { type: 'timeseries', time: { unit: 'minute' } },
-          y: { beginAtZero: false }
-        }
-      }
-    });
-
-    function calculateEMA(data, period) {
-      const k = 2 / (period + 1);
-      let emaArray = [data[0]];
-      for (let i = 1; i < data.length; i++) {
-        emaArray.push(data[i] * k + emaArray[i - 1] * (1 - k));
-      }
-      return emaArray;
-    }
-
-    function calculateRSI(prices, period = 14) {
-      let gains = 0, losses = 0;
-      for (let i = 1; i <= period; i++) {
-        const diff = prices[i] - prices[i - 1];
-        if (diff >= 0) gains += diff;
-        else losses -= diff;
-      }
-      const rs = gains / losses;
-      return 100 - 100 / (1 + rs);
-    }
-
-    function calculateZigZag(data, deviation = 0.0005) {
-      let result = [data[0]];
-      let direction = 0;
-      for (let i = 1; i < data.length; i++) {
-        const diff = data[i] - result[result.length - 1];
-        if (direction >= 0 && diff >= deviation) {
-          direction = 1;
-          result.push(data[i]);
-        } else if (direction <= 0 && diff <= -deviation) {
-          direction = -1;
-          result.push(data[i]);
-        } else {
-          result.push(null);
-        }
+    function detectFractal(data, left, right) {
+      const result = new Array(data.length).fill('');
+      for (let i = left; i < data.length - right; i++) {
+        const isTop = [...Array(left).keys()].every(j => data[i].high > data[i-j-1].high) &&
+                      [...Array(right).keys()].every(j => data[i].high > data[i+j+1].high);
+        const isBottom = [...Array(left).keys()].every(j => data[i].low < data[i-j-1].low) &&
+                         [...Array(right).keys()].every(j => data[i].low < data[i+j+1].low);
+        if (isTop) result[i] = '⬆️';
+        else if (isBottom) result[i] = '⬇️';
       }
       return result;
     }
 
-    async function fetchData(symbol) {
-      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&apikey=${apiKey}&outputsize=30&format=JSON`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (!data || !data.values) return null;
-      return data.values.reverse().map(v => ({
+    async function fetchData(symbol, interval) {
+      const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&apikey=${apiKey}&outputsize=50`);
+      const json = await res.json();
+      return json.values ? json.values.reverse().map(v => ({
         time: v.datetime,
-        open: parseFloat(v.open),
-        high: parseFloat(v.high),
-        low: parseFloat(v.low),
-        close: parseFloat(v.close)
-      }));
+        open: +v.open, high: +v.high, low: +v.low, close: +v.close
+      })) : null;
     }
 
     async function updateSignals() {
-      const pairs = {
-        "EUR/USD": "EUR/USD",
-        "GBP/USD": "GBP/USD",
-        "USD/JPY": "USD/JPY"
-      };
-
+      const interval = document.getElementById('interval').value;
+      const left = +document.getElementById('leftDepth').value;
+      const right = +document.getElementById('rightDepth').value;
       const signalBody = document.getElementById('signal-body');
       signalBody.innerHTML = '';
-      let debugText = '[SOURCE: TwelveData API]\n';
-      let triggeredSignal = null;
+      document.getElementById('charts').innerHTML = '';
 
-      const rsiPeriod = parseInt(document.getElementById('rsiPeriod').value);
-      const emaShort = parseInt(document.getElementById('emaShort').value);
-      const emaLong = parseInt(document.getElementById('emaLong').value);
+      for (let pair of pairs) {
+        const canvas = document.createElement('canvas');
+        document.getElementById('charts').appendChild(canvas);
+        const data = await fetchData(pair, interval);
+        if (!data) continue;
 
-      for (const label in pairs) {
-        const symbol = pairs[label];
-        const candles = await fetchData(symbol);
-        if (!candles) continue;
+        const fractals = detectFractal(data, left, right);
+        const last = fractals.at(-1);
+        const signal = last === '⬆️' ? 'SELL' : last === '⬇️' ? 'BUY' : 'WAIT';
+        const now = new Date().toLocaleTimeString();
+        signalLogs.push(`${now} | ${pair} | ${last} | ${signal}`);
+        signalBody.innerHTML += `<tr><td>${pair}</td><td>${last}</td><td class='${signal.toLowerCase()}'><b>${signal}</b></td><td>${now}</td></tr>`;
 
-        const closes = candles.map(c => c.close);
-        const emaS = calculateEMA(closes, emaShort);
-        const emaL = calculateEMA(closes, emaLong);
-        const rsi = calculateRSI(closes, rsiPeriod);
-        const zigzag = calculateZigZag(closes);
-
-        const signal = (rsi < 30 && emaS.at(-1) > emaL.at(-1)) ? 'BUY' : (rsi > 70 && emaS.at(-1) < emaL.at(-1)) ? 'SELL' : 'WAIT';
-
-        if (signal === 'BUY' || signal === 'SELL') {
-          triggeredSignal = `🟢 SIGNAL DÉTECTÉ : ${label} → ${signal}\n📈 Expiration recommandée : 1 Minute\n⏱ Lancer le trade maintenant sur Pocket Option !`;
-          startTradeCountdown();
-          notifSound.play();
-        }
-
-        debugText += `\n${label}:\n EMA${emaShort}: ${emaS.at(-1).toFixed(5)}, EMA${emaLong}: ${emaL.at(-1).toFixed(5)}, RSI: ${rsi.toFixed(2)}, Signal: ${signal}`;
-
-        const row = `
-          <tr>
-            <td>${label}</td>
-            <td>${emaS.at(-1).toFixed(5)}</td>
-            <td>${emaL.at(-1).toFixed(5)}</td>
-            <td>${rsi.toFixed(2)}</td>
-            <td>${zigzag.at(-1) ? '↗️' : '↘️'}</td>
-            <td class="${signal === 'BUY' ? 'buy' : signal === 'SELL' ? 'sell' : ''}">${signal}</td>
-          </tr>`;
-        signalBody.innerHTML += row;
+        new Chart(canvas.getContext('2d'), {
+          type: 'candlestick',
+          data: {
+            datasets: [{
+              label: pair,
+              data: data.map(d => ({ x: d.time, o: d.open, h: d.high, l: d.low, c: d.close }))
+            }]
+          },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { type: 'timeseries', time: { unit: 'minute' } },
+              y: { beginAtZero: false }
+            }
+          }
+        });
       }
-
-      tradeAlert.style.display = triggeredSignal ? 'block' : 'none';
-      tradeAlert.textContent = triggeredSignal || '';
-      debugBox.textContent = debugText;
     }
 
     function startBot() {
       updateSignals();
+    }
+
+    function downloadSignals() {
+      const blob = new Blob([signalLogs.join('\n')], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'signals.log';
+      link.click();
     }
   </script></body>
 </html>
