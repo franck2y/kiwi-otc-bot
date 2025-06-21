@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
   <style>
     body { font-family: sans-serif; background: #111; color: #fff; padding: 10px; }
-    select, button { font-size: 18px; margin: 5px; padding: 5px; }
+    select, button, input { font-size: 16px; margin: 5px; padding: 5px; }
     .container { margin-top: 20px; }
     canvas { background: #222; border-radius: 10px; }
     table { width: 100%; margin-top: 20px; border-collapse: collapse; background: #1b1b1b; }
@@ -31,7 +31,12 @@
     <option value="GBP/USD">GBP/USD</option>
     <option value="USD/JPY">USD/JPY</option>
   </select>
-  <button onclick="startBot()">Démarrer le Bot</button>  <div id="trade-alert"></div>
+  <button onclick="startBot()">Démarrer le Bot</button>
+  <button onclick="window.open('https://pocketoption.com', '_blank')">🌐 Ouvrir Pocket Option</button>  <div>
+    <label>RSI Période: <input id="rsiPeriod" type="number" value="14" style="width:60px;"></label>
+    <label>EMA Courte: <input id="emaShort" type="number" value="9" style="width:60px;"></label>
+    <label>EMA Longue: <input id="emaLong" type="number" value="21" style="width:60px;"></label>
+  </div>  <div id="trade-alert"></div>
   <div id="trade-countdown"></div>  <div class="container">
     <h3 id="next-signal">Prochain signal dans 60s</h3>
     <canvas id="chart" width="400" height="200"></canvas><div class="signal-table">
@@ -50,7 +55,9 @@
   </table>
 </div>
 
-  </div>  <div id="debug">Chargement du debug...</div>  <script>
+  </div>  <div id="debug">Chargement du debug...</div><audio id="notifSound" src="https://notificationsounds.com/storage/sounds/file-sounds-1155-pristine.mp3"></audio>
+
+  <script>
     const apiKey = "05d7b73a43a14818905654f8fbbe42f2";
 
     let countdown = 60;
@@ -59,6 +66,7 @@
     const debugBox = document.getElementById('debug');
     const tradeAlert = document.getElementById('trade-alert');
     const tradeCountdownEl = document.getElementById('trade-countdown');
+    const notifSound = document.getElementById('notifSound');
 
     setInterval(() => {
       countdown--;
@@ -162,31 +170,36 @@
       let debugText = '[SOURCE: TwelveData API]\n';
       let triggeredSignal = null;
 
+      const rsiPeriod = parseInt(document.getElementById('rsiPeriod').value);
+      const emaShort = parseInt(document.getElementById('emaShort').value);
+      const emaLong = parseInt(document.getElementById('emaLong').value);
+
       for (const label in pairs) {
         const symbol = pairs[label];
         const candles = await fetchData(symbol);
         if (!candles) continue;
 
         const closes = candles.map(c => c.close);
-        const ema9 = calculateEMA(closes, 9);
-        const ema21 = calculateEMA(closes, 21);
-        const rsi = calculateRSI(closes);
+        const emaS = calculateEMA(closes, emaShort);
+        const emaL = calculateEMA(closes, emaLong);
+        const rsi = calculateRSI(closes, rsiPeriod);
         const zigzag = calculateZigZag(closes);
 
-        const signal = (rsi < 30 && ema9.at(-1) > ema21.at(-1)) ? 'BUY' : (rsi > 70 && ema9.at(-1) < ema21.at(-1)) ? 'SELL' : 'WAIT';
+        const signal = (rsi < 30 && emaS.at(-1) > emaL.at(-1)) ? 'BUY' : (rsi > 70 && emaS.at(-1) < emaL.at(-1)) ? 'SELL' : 'WAIT';
 
         if (signal === 'BUY' || signal === 'SELL') {
           triggeredSignal = `🟢 SIGNAL DÉTECTÉ : ${label} → ${signal}\n📈 Expiration recommandée : 1 Minute\n⏱ Lancer le trade maintenant sur Pocket Option !`;
           startTradeCountdown();
+          notifSound.play();
         }
 
-        debugText += `\n${label}:\n EMA9: ${ema9.at(-1).toFixed(5)}, EMA21: ${ema21.at(-1).toFixed(5)}, RSI: ${rsi.toFixed(2)}, Signal: ${signal}`;
+        debugText += `\n${label}:\n EMA${emaShort}: ${emaS.at(-1).toFixed(5)}, EMA${emaLong}: ${emaL.at(-1).toFixed(5)}, RSI: ${rsi.toFixed(2)}, Signal: ${signal}`;
 
         const row = `
           <tr>
             <td>${label}</td>
-            <td>${ema9.at(-1).toFixed(5)}</td>
-            <td>${ema21.at(-1).toFixed(5)}</td>
+            <td>${emaS.at(-1).toFixed(5)}</td>
+            <td>${emaL.at(-1).toFixed(5)}</td>
             <td>${rsi.toFixed(2)}</td>
             <td>${zigzag.at(-1) ? '↗️' : '↘️'}</td>
             <td class="${signal === 'BUY' ? 'buy' : signal === 'SELL' ? 'sell' : ''}">${signal}</td>
