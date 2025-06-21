@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kiwi OTC Bot + Graphique</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #fff; margin: 0; padding: 16px; }
+    select, button, input { font-size: 18px; padding: 10px; margin-bottom: 10px; width: 100%; }
+    button { background: #0f0; border: none; cursor: pointer; }
+    .btn-blue { background: #00c0ff; color: white; }
+    .signal-box { margin-top: 20px; font-size: 18px; }
+    .countdown { font-size: 24px; font-weight: bold; color: #0f0; margin-top: 10px; }
+    canvas { margin-top: 20px; background: #fff; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h2>📊 Kiwi OTC Bot + Graphique</h2>
+
+  <label for="pair">Choisir une paire OTC :</label>
+  <select id="pair">
+    <option>EUR/USD (OTC)</option>
+    <option>GBP/JPY (OTC)</option>
+    <option>USD/JPY (OTC)</option>
+    <option>EUR/JPY (OTC)</option>
+    <option>AUD/USD (OTC)</option>
+    <option>GBP/USD (OTC)</option>
+  </select>
+
+  <button onclick="startBot()">▶️ Lancer le bot</button>
+
+  <div class="signal-box" id="signalArea"></div>
+  <div class="countdown" id="countdown"></div>
+  <ul id="signalHistory"></ul>
+
+  <canvas id="signalChart" width="400" height="200"></canvas>
+
+  <script>
+    let intervalId
+    let countdownId
+    let remaining = 60
+    let signalData = []
+    let chart
+
+    function startBot() {
+      if (intervalId) clearInterval(intervalId)
+      nextSignal()
+      intervalId = setInterval(nextSignal, 60000)
+      if (countdownId) clearInterval(countdownId)
+      startCountdown()
+    }
+
+    function nextSignal() {
+      const pair = document.getElementById('pair').value
+      const signal = Math.random() < 0.5 ? 'UP' : 'DOWN'
+      const confidence = Math.floor(Math.random() * 30) + 65
+      const time = new Date().toLocaleTimeString()
+
+      document.getElementById('signalArea').innerHTML =
+        `🔔 Signal IA : <strong>${signal}</strong> sur <strong>${pair}</strong><br>🎯 Confiance : ${confidence}%<br>🕒 ${time}`
+
+      const history = document.getElementById('signalHistory')
+      const li = document.createElement('li')
+      li.textContent = `[${time}] ${pair} → ${signal} (${confidence}%)`
+      history.prepend(li)
+
+      signalData.unshift({ time, signal, confidence })
+      if (signalData.length > 5) signalData.pop()
+      updateChart()
+
+      remaining = 60
+    }
+
+    function startCountdown() {
+      countdownId = setInterval(() => {
+        remaining--
+        document.getElementById('countdown').textContent = `⏳ Prochain signal dans : ${remaining}s`
+        if (remaining <= 0) remaining = 60
+      }, 1000)
+    }
+
+    function updateChart() {
+      const labels = signalData.map(d => d.time).reverse()
+      const data = signalData.map(d => d.confidence).reverse()
+      const colors = signalData.map(d => d.signal === 'UP' ? 'rgba(0,255,0,0.7)' : 'rgba(255,0,0,0.7)').reverse()
+
+      if (!chart) {
+        const ctx = document.getElementById('signalChart').getContext('2d')
+        chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Confiance IA (%)',
+              data,
+              backgroundColor: colors
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100
+              }
+            }
+          }
+        })
+      } else {
+        chart.data.labels = labels
+        chart.data.datasets[0].data = data
+        chart.data.datasets[0].backgroundColor = colors
+        chart.update()
+      }
+    }
+  </script>
+</body>
+    </html>
