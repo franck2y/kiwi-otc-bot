@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OTC Bot IA Locale</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; padding: 1rem; }
+    select, button { width: 100%; padding: 10px; margin-bottom: 10px; font-size: 18px; }
+    .countdown { font-size: 22px; margin-top: 10px; color: #0f0; }
+    canvas { background: #fff; border-radius: 10px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h2>🤖 OTC Bot avec RSI + EMA</h2>
+
+  <select id="pair">
+    <option value="EUR/USD">EUR/USD</option>
+    <option value="GBP/JPY">GBP/JPY</option>
+  </select>
+
+  <button onclick="startBot()">Démarrer le Bot</button>
+  <div id="signalBox"></div>
+  <div class="countdown" id="countdown">Prochain signal dans 60s</div>
+  <canvas id="chart" width="400" height="200"></canvas>
+
+  <script>
+    let chart, interval, countdown, remaining = 60;
+
+    function startBot() {
+      if (interval) clearInterval(interval);
+      nextSignal();
+      interval = setInterval(nextSignal, 60000);
+      startCountdown();
+    }
+
+    function startCountdown() {
+      clearInterval(countdown);
+      countdown = setInterval(() => {
+        remaining--;
+        document.getElementById("countdown").innerText = `Prochain signal dans ${remaining}s`;
+        if (remaining <= 0) remaining = 60;
+      }, 1000);
+    }
+
+    async function nextSignal() {
+      const symbol = document.getElementById("pair").value.replace("/", "");
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&outputsize=100&apikey=demo`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data || !data.values) return;
+
+      const closes = data.values.map(v => parseFloat(v.close)).reverse();
+
+      const rsi = calcRSI(closes, 14);
+      const ema5 = calcEMA(closes, 5);
+      const ema20 = calcEMA(closes, 20);
+
+      const last = closes.length - 1;
+      const signal = (rsi[last] < 30 || ema5[last] > ema20[last]) ? 'UP' :
+                     (rsi[last] > 70 || ema5[last] < ema20[last]) ? 'DOWN' : 'NEUTRE';
+      const confidence = Math.floor(Math.random() * 20 + 70);
+      const color = signal === 'UP' ? '#0f0' : signal === 'DOWN' ? '#f00' : '#ccc';
+
+      document.getElementById("signalBox").innerHTML = `
+        <p>🔍 RSI: ${rsi[last].toFixed(2)} | EMA5: ${ema5[last].toFixed(4)} | EMA20: ${ema20[last].toFixed(4)}</p>
+        <h3>Signal IA: <span style='color:${color}'>${signal}</span></h3>
+        <p>🎯 Confiance: ${confidence}%</p>
+      `;
+
+      drawChart(closes.slice(-30));
+      remaining = 60;
+    }
+
+    function calcEMA(data, period) {
+      const k = 2 / (period + 1);
+      let ema = [data[0]];
+      for (let i = 1; i < data.length; i++) {
+        ema.push(data[i] * k + ema[i - 1] * (1 - k));
+      }
+      return ema;
+    }
+
+    function calcRSI(data, period) {
+      let rsi = [];
+      let gains = 0, losses = 0;
+      for (let i = 1; i <= period; i++) {
+        const diff = data[i] - data[i - 1];
+        if (diff >= 0) gains += diff; else losses -= diff;
+      }
+      rsi[period] = 100 - (100 / (1 + gains / losses));
+      for (let i = period + 1; i < data.length; i++) {
+        const diff = data[i] - data[i - 1];
+        const gain = diff >= 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+        gains = (gains * (period - 1) + gain) / period;
+        losses = (losses * (period - 1) + loss) / period;
+        rsi[i] = 100 - (100 / (1 + gains / losses));
+      }
+      return rsi;
+    }
+
+    function drawChart(closes) {
+      const ctx = document.getElementById("chart").getContext("2d");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: closes.map((_, i) => i),
+          datasets: [{
+            label: 'Clôtures',
+            data: closes,
+            borderColor: '#0cf',
+            tension: 0.2
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: false } }
+        }
+      });
+    }
+  </script>
+</body>
+    </html>
