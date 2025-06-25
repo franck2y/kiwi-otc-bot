@@ -1,143 +1,73 @@
-<!DOCTYPE html><html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OTC Bot - Signaux IA + Graphique</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background-color: #111;
-      color: white;
-      margin: 0;
-      padding: 0;
+<!DOCTYPE html><html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Trading Bot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-gray-900 text-white">
+    <div class="max-w-4xl mx-auto py-10">
+      <h1 class="text-3xl font-bold mb-6 text-center">📈 AI Trading Bot (OTC)</h1>
+      <canvas id="chart" class="bg-gray-800 p-4 rounded-lg"></canvas>
+      <div class="mt-8">
+        <h2 class="text-xl font-semibold mb-2">Derniers signaux (1 min)</h2>
+        <ul id="signals" class="space-y-1 text-sm"></ul>
+      </div>
+    </div><script>
+  const ctx = document.getElementById('chart').getContext('2d');
+  const priceData = Array.from({ length: 20 }, () => 1.1 + Math.random() * 0.1);
+  const labels = Array.from({ length: priceData.length }, (_, i) => `${i + 1}`);
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Prix OTC (simulé)',
+        data: priceData,
+        borderColor: 'rgb(75, 192, 192)',
+        fill: false,
+      }]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: false }
+      }
     }
-    .container {
-      padding: 20px;
-      max-width: 600px;
-      margin: auto;
-    }
-    h1 {
-      text-align: center;
-      font-size: 1.5em;
-    }
-    .pair-select {
-      margin: 10px 0;
-      display: flex;
-      justify-content: space-between;
-    }
-    select, button {
-      font-size: 1em;
-      padding: 10px;
-    }
-    iframe {
-      border: none;
-      width: 100%;
-      height: 400px;
-      margin: 20px 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      padding: 8px;
-      text-align: center;
-      border: 1px solid #555;
-    }
-    .signal {
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>📊 OTC Bot - IA Locale + Graphique TradingView</h1><div class="pair-select">
-  <label for="pair">Paire :</label>
-  <select id="pair">
-    <option value="EUR/USD">EUR/USD</option>
-    <option value="GBP/USD">GBP/USD</option>
-    <option value="USD/JPY">USD/JPY</option>
-  </select>
-  <button onclick="startBot()">Démarrer le bot</button>
-</div>
+  });
 
-<div id="chart"></div>
+  const signalList = document.getElementById('signals');
 
-<div id="signal-area">
-  <p id="countdown">Prochain signal dans 60s...</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Heure</th><th>O</th><th>H</th><th>L</th><th>C</th><th>Signal</th>
-      </tr>
-    </thead>
-    <tbody id="signal-table">
-      <tr><td colspan="6">En attente du premier signal...</td></tr>
-    </tbody>
-  </table>
-</div>
+  // Mini modèle AI simple avec règles sur patterns
+  function miniModelAI(data) {
+    const last = data[data.length - 1];
+    const prev = data[data.length - 2];
+    const trend = last - prev;
+    if (trend > 0.002) return 'UP';
+    if (trend < -0.002) return 'DOWN';
+    return 'WAIT';
+  }
 
-  </div><script>
-const API_KEY = "6XLTMJEEILYL1VE3";
-let interval;
+  function simulateNewPrice() {
+    const last = priceData[priceData.length - 1];
+    const newPrice = last + (Math.random() - 0.5) * 0.01;
+    priceData.push(newPrice);
+    priceData.shift();
+    chart.data.datasets[0].data = priceData;
+    chart.update();
 
-function startBot() {
-  clearInterval(interval);
-  fetchAndAnalyze();
-  interval = setInterval(fetchAndAnalyze, 60000);
-  startCountdown(60);
-}
+    const signal = miniModelAI(priceData);
+    const li = document.createElement('li');
+    li.textContent = `${new Date().toLocaleTimeString()} - Signal : ${signal}`;
+    li.className = signal === 'UP' ? 'text-green-400' : signal === 'DOWN' ? 'text-red-400' : 'text-yellow-400';
+    signalList.prepend(li);
+    if (signalList.childNodes.length > 10) signalList.removeChild(signalList.lastChild);
+  }
 
-function startCountdown(seconds) {
-  let s = seconds;
-  const el = document.getElementById('countdown');
-  el.innerText = `Prochain signal dans ${s}s...`;
-  const timer = setInterval(() => {
-    s--;
-    el.innerText = `Prochain signal dans ${s}s...`;
-    if (s <= 0) clearInterval(timer);
-  }, 1000);
-}
+  setInterval(simulateNewPrice, 60000); // 1 minute
+</script>
 
-function fetchAndAnalyze() {
-  const pair = document.getElementById("pair").value.replace("/", "");
-  const url = `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=${pair}&interval=1min&apikey=${API_KEY}`;
-
-  fetch(url)
-    .then(res => res.json())
-    .then(data => {
-      const timeSeries = data["Time Series (1min)"];
-      const times = Object.keys(timeSeries);
-      const last = timeSeries[times[0]];
-
-      const open = parseFloat(last["1. open"]);
-      const high = parseFloat(last["2. high"]);
-      const low = parseFloat(last["3. low"]);
-      const close = parseFloat(last["4. close"]);
-
-      let signal = "WAIT";
-      if (close > open) signal = "BUY";
-      else if (close < open) signal = "SELL";
-
-      const row = `<tr><td>${times[0]}</td><td>${open}</td><td>${high}</td><td>${low}</td><td>${close}</td><td class="signal">${signal}</td></tr>`;
-      document.getElementById("signal-table").innerHTML = row;
-    })
-    .catch(() => {
-      document.getElementById("signal-table").innerHTML = '<tr><td colspan="6">Erreur lors de la récupération</td></tr>';
-    });
-}
-
-// Load TradingView chart
-function loadChart() {
-  const pair = document.getElementById("pair").value;
-  const tvSymbol = pair.replace("/", "").toUpperCase();
-  document.getElementById("chart").innerHTML = `
-    <iframe src="https://www.tradingview.com/chart/?symbol=FX:${tvSymbol}" allowfullscreen></iframe>
-  `;
-}
-
-document.getElementById("pair").addEventListener("change", loadChart);
-window.onload = loadChart;
-</script></body>
+  </body>
 </html>
