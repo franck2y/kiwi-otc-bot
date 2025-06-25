@@ -1,54 +1,74 @@
-<!DOCTYPE html>
-<html lang="fr">
+<!DOCTYPE html><html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Bot Trading OTC IA</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-900 text-white font-sans p-4">
-  <div class="max-w-md mx-auto">
-    <h1 class="text-2xl font-bold text-center text-blue-400 mb-6">
-      🤖 Robot de trading IA - OTC 1 min
-    </h1>
-
-    <label class="block mb-2">Paire OTC</label>
-    <select id="pair" class="w-full p-2 rounded bg-gray-800 text-white mb-4">
-      <option value="EUR/USD">EUR/USD</option>
-      <option value="GBP/USD">GBP/USD</option>
-      <option value="USD/JPY">USD/JPY</option>
-    </select>
-
-    <label class="block mb-2">Laps de temps</label>
-    <select id="timeframe" class="w-full p-2 rounded bg-gray-800 text-white mb-4">
-      <option value="1min">1 minute</option>
-    </select>
-
-    <button onclick="generateSignal()" class="w-full p-3 rounded bg-blue-600 hover:bg-blue-700 transition mb-6">
-      📊 Générer un signal
-    </button>
-
-    <div class="bg-gray-800 p-4 rounded mb-4">
-      <p class="text-lg">💡 <span id="signalResult">Aucun signal généré</span></p>
-    </div>
-
-    <div class="bg-gray-800 p-4 rounded">
-      <h2 class="text-xl mb-2">📈 Derniers Signaux</h2>
-      <ul id="history" class="text-sm space-y-1 text-gray-300"></ul>
-    </div>
-  </div>
-
-  <script>
-    function generateSignal() {
-      const direction = Math.random() > 0.5 ? "UP 📈" : "DOWN 📉";
-      const now = new Date().toLocaleTimeString();
-      document.getElementById("signalResult").textContent = `${direction} (${now})`;
-
-      const li = document.createElement("li");
-      li.textContent = `${now} - ${direction}`;
-      document.getElementById("history").prepend(li);
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot de trading IA - OTC 1 min</title>
+  <style>
+    body {
+      background-color: #0f172a;
+      color: #bfdbfe;
+      font-family: Arial, sans-serif;
+      padding: 20px;
     }
-  </script>
-</body>
-</html>  </script></body>
+    h1 {
+      text-align: center;
+      font-size: 1.8rem;
+    }
+    select, button {
+      display: block;
+      margin: 10px auto;
+      padding: 10px;
+      font-size: 1rem;
+    }
+    #signalBox, #logBox {
+      background-color: #1e293b;
+      padding: 15px;
+      margin: 20px auto;
+      border-radius: 10px;
+      max-width: 400px;
+      min-height: 80px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤖 Robot de trading IA - OTC 1 min</h1><label for="pair">Paire OTC</label> <select id="pair"> <option value="EUR/USD">EUR/USD</option> <option value="GBP/USD">GBP/USD</option> <option value="USD/JPY">USD/JPY</option> </select>
+
+<label for="tf">Laps de temps</label> <select id="tf"> <option value="1">1 minute</option> </select>
+
+<button onclick="generateSignal()">Afficher un signal</button>
+
+  <div id="signalBox"></div>
+  <div id="logBox">Derniers Signaux</div>  <script>
+    // Exemple de patterns simples
+    const patterns = [
+      { seq: ['green', 'green'], signal: 'UP 📈' },
+      { seq: ['red', 'red'], signal: 'DOWN 📉' },
+      { seq: ['red', 'green', 'green'], signal: 'UP 📈' },
+      { seq: ['green', 'red', 'red'], signal: 'DOWN 📉' },
+    ];
+
+    // Simule une série de bougies : 'green' ou 'red'
+    function simulateCandles(n = 3) {
+      return Array.from({ length: n }, () => Math.random() > 0.5 ? 'green' : 'red');
+    }
+
+    function matchPattern(candles) {
+      for (let p of patterns) {
+        const last = candles.slice(-p.seq.length).join(',');
+        if (last === p.seq.join(',')) return p.signal;
+      }
+      return Math.random() > 0.5 ? 'UP 📈' : 'DOWN 📉'; // fallback aléatoire
+    }
+
+    function generateSignal() {
+      const candles = simulateCandles(3);
+      const signal = matchPattern(candles);
+      const now = new Date().toLocaleTimeString();
+
+      document.getElementById("signalBox").innerHTML = `<strong>Signal:</strong> ${signal}`;
+
+      const logBox = document.getElementById("logBox");
+      logBox.innerHTML += `<div>${now} – ${signal} (${candles.join(',')})</div>`;
+    }
+  </script></body>
 </html>
