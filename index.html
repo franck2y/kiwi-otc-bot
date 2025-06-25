@@ -1,74 +1,37 @@
-<!DOCTYPE html><html lang="fr">
+<!DOCTYPE html>
+<html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Robot de trading IA - OTC 1 min</title>
-  <style>
-    body {
-      background-color: #0f172a;
-      color: #bfdbfe;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    h1 {
-      text-align: center;
-      font-size: 1.8rem;
-    }
-    select, button {
-      display: block;
-      margin: 10px auto;
-      padding: 10px;
-      font-size: 1rem;
-    }
-    #signalBox, #logBox {
-      background-color: #1e293b;
-      padding: 15px;
-      margin: 20px auto;
-      border-radius: 10px;
-      max-width: 400px;
-      min-height: 80px;
-    }
-  </style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bot OTC IA - Données Réelles</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+  <script defer src="api.js"></script>
 </head>
-<body>
-  <h1>🤖 Robot de trading IA - OTC 1 min</h1><label for="pair">Paire OTC</label> <select id="pair"> <option value="EUR/USD">EUR/USD</option> <option value="GBP/USD">GBP/USD</option> <option value="USD/JPY">USD/JPY</option> </select>
+<body class="bg-gray-900 text-gray-100 p-6">
+  <div class="max-w-md mx-auto bg-gray-800 rounded-lg p-6 shadow">
+    <h1 class="text-xl font-bold mb-4 text-center text-blue-400">🤖 Bot IA OTC (1 min)</h1>
 
-<label for="tf">Laps de temps</label> <select id="tf"> <option value="1">1 minute</option> </select>
+    <div class="mb-4">
+      <label class="block mb-1">Paire OTC</label>
+      <select id="pair" class="w-full bg-gray-700 rounded p-2">
+        <option value="EURUSD">EUR/USD</option>
+        <option value="GBPUSD">GBP/USD</option>
+        <option value="USDJPY">USD/JPY</option>
+      </select>
+    </div>
 
-<button onclick="generateSignal()">Afficher un signal</button>
+    <canvas id="chart" height="180" class="bg-gray-800 rounded-lg mb-4"></canvas>
 
-  <div id="signalBox"></div>
-  <div id="logBox">Derniers Signaux</div>  <script>
-    // Exemple de patterns simples
-    const patterns = [
-      { seq: ['green', 'green'], signal: 'UP 📈' },
-      { seq: ['red', 'red'], signal: 'DOWN 📉' },
-      { seq: ['red', 'green', 'green'], signal: 'UP 📈' },
-      { seq: ['green', 'red', 'red'], signal: 'DOWN 📉' },
-    ];
+    <div class="mb-4">
+      <h2 class="text-lg font-semibold text-blue-300 mb-2">Dernier Signal</h2>
+      <div id="signalBox" class="bg-gray-700 rounded p-3 text-center text-lg"></div>
+    </div>
 
-    // Simule une série de bougies : 'green' ou 'red'
-    function simulateCandles(n = 3) {
-      return Array.from({ length: n }, () => Math.random() > 0.5 ? 'green' : 'red');
-    }
-
-    function matchPattern(candles) {
-      for (let p of patterns) {
-        const last = candles.slice(-p.seq.length).join(',');
-        if (last === p.seq.join(',')) return p.signal;
-      }
-      return Math.random() > 0.5 ? 'UP 📈' : 'DOWN 📉'; // fallback aléatoire
-    }
-
-    function generateSignal() {
-      const candles = simulateCandles(3);
-      const signal = matchPattern(candles);
-      const now = new Date().toLocaleTimeString();
-
-      document.getElementById("signalBox").innerHTML = `<strong>Signal:</strong> ${signal}`;
-
-      const logBox = document.getElementById("logBox");
-      logBox.innerHTML += `<div>${now} – ${signal} (${candles.join(',')})</div>`;
-    }
-  </script></body>
+    <div>
+      <h2 class="text-lg font-semibold text-blue-300 mb-2">Historique</h2>
+      <ul id="logBox" class="max-h-48 overflow-auto space-y-1 text-sm"></ul>
+    </div>
+  </div>
+</body>
 </html>
