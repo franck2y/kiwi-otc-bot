@@ -1,112 +1,54 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Trading Bot OTC</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script defer src="api.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bot Trading OTC IA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white p-4">
-  <div class="max-w-3xl mx-auto">
-    <h1 class="text-3xl font-bold mb-4 text-center text-blue-400">🤖 AI Trading Bot - OTC 1 Min</h1><div class="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
-  <div>
-    <label class="block mb-1 text-sm">Paire OTC</label>
-    <select id="pair" class="p-2 bg-gray-800 rounded w-full md:w-48">
-      <option value="EURUSD">EUR/USD</option>
-      <option value="GBPUSD">GBP/USD</option>
-      <option value="USDJPY">USD/JPY</option>
+<body class="bg-gray-900 text-white font-sans p-4">
+  <div class="max-w-md mx-auto">
+    <h1 class="text-2xl font-bold text-center text-blue-400 mb-6">
+      🤖 Robot de trading IA - OTC 1 min
+    </h1>
+
+    <label class="block mb-2">Paire OTC</label>
+    <select id="pair" class="w-full p-2 rounded bg-gray-800 text-white mb-4">
+      <option value="EUR/USD">EUR/USD</option>
+      <option value="GBP/USD">GBP/USD</option>
+      <option value="USD/JPY">USD/JPY</option>
     </select>
-  </div>
-  <div>
-    <label class="block mb-1 text-sm">Timeframe</label>
-    <select id="timeframe" class="p-2 bg-gray-800 rounded w-full md:w-48">
-      <option value="1min">1 Minute</option>
+
+    <label class="block mb-2">Laps de temps</label>
+    <select id="timeframe" class="w-full p-2 rounded bg-gray-800 text-white mb-4">
+      <option value="1min">1 minute</option>
     </select>
+
+    <button onclick="generateSignal()" class="w-full p-3 rounded bg-blue-600 hover:bg-blue-700 transition mb-6">
+      📊 Générer un signal
+    </button>
+
+    <div class="bg-gray-800 p-4 rounded mb-4">
+      <p class="text-lg">💡 <span id="signalResult">Aucun signal généré</span></p>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded">
+      <h2 class="text-xl mb-2">📈 Derniers Signaux</h2>
+      <ul id="history" class="text-sm space-y-1 text-gray-300"></ul>
+    </div>
   </div>
-</div>
 
-<div class="bg-gray-800 rounded p-4 mb-4">
-  <canvas id="chart" height="200"></canvas>
-</div>
+  <script>
+    function generateSignal() {
+      const direction = Math.random() > 0.5 ? "UP 📈" : "DOWN 📉";
+      const now = new Date().toLocaleTimeString();
+      document.getElementById("signalResult").textContent = `${direction} (${now})`;
 
-<div class="bg-gray-800 p-4 rounded">
-  <h2 class="text-lg font-semibold mb-2 text-blue-300">Derniers Signaux</h2>
-  <ul id="signals" class="text-sm space-y-1"></ul>
-</div>
-
-  </div>  <script>
-    const apiKey = '6XLTMJEEILYL1VE3';
-    const pairSelect = document.getElementById('pair');
-    const signalList = document.getElementById('signals');
-    const chartCtx = document.getElementById('chart').getContext('2d');
-    let priceData = [];
-    let chart;
-
-    async function fetchData(symbol) {
-      const url = `https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=${symbol.slice(0,3)}&to_symbol=${symbol.slice(3)}&interval=1min&apikey=${apiKey}&outputsize=compact`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const candles = Object.entries(data['Time Series FX (1min)'] || {});
-      const reversed = candles.slice(0, 20).reverse();
-      return reversed.map(([time, values]) => ({
-        time,
-        close: parseFloat(values['4. close'])
-      }));
+      const li = document.createElement("li");
+      li.textContent = `${now} - ${direction}`;
+      document.getElementById("history").prepend(li);
     }
-
-    function miniLogicAI(data) {
-      if (data.length < 3) return 'WAIT';
-      const t0 = data[data.length - 3].close;
-      const t2 = data[data.length - 1].close;
-      if (t2 > t0 + 0.0015) return 'UP';
-      if (t2 < t0 - 0.0015) return 'DOWN';
-      return 'WAIT';
-    }
-
-    async function updateChart() {
-      const symbol = pairSelect.value;
-      const prices = await fetchData(symbol);
-      if (!prices.length) return;
-      priceData = prices;
-
-      const times = prices.map(p => p.time.split(' ')[1]);
-      const closes = prices.map(p => p.close);
-      const signal = miniLogicAI(prices);
-
-      if (!chart) {
-        chart = new Chart(chartCtx, {
-          type: 'line',
-          data: {
-            labels: times,
-            datasets: [{
-              label: `${symbol} Close Price`,
-              data: closes,
-              borderColor: '#34d399',
-              backgroundColor: 'rgba(52, 211, 153, 0.1)',
-              tension: 0.3
-            }]
-          },
-          options: {
-            scales: {
-              y: { beginAtZero: false }
-            }
-          }
-        });
-      } else {
-        chart.data.labels = times;
-        chart.data.datasets[0].data = closes;
-        chart.update();
-      }
-
-      const log = document.createElement('li');
-      log.className = signal === 'UP' ? 'text-green-400' : signal === 'DOWN' ? 'text-red-400' : 'text-yellow-300';
-      log.textContent = `${new Date().toLocaleTimeString()} | ${symbol} → ${signal}`;
-      signalList.prepend(log);
-      if (signalList.childNodes.length > 10) signalList.removeChild(signalList.lastChild);
-    }
-
-    updateChart();
-    setInterval(updateChart, 60000); // Toutes les 1 min
-  </script></body>
+  </script>
+</body>
+</html>  </script></body>
 </html>
