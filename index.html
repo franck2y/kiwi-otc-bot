@@ -1,73 +1,112 @@
 <!DOCTYPE html><html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Trading Bot</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-gray-900 text-white">
-    <div class="max-w-4xl mx-auto py-10">
-      <h1 class="text-3xl font-bold mb-6 text-center">📈 AI Trading Bot (OTC)</h1>
-      <canvas id="chart" class="bg-gray-800 p-4 rounded-lg"></canvas>
-      <div class="mt-8">
-        <h2 class="text-xl font-semibold mb-2">Derniers signaux (1 min)</h2>
-        <ul id="signals" class="space-y-1 text-sm"></ul>
-      </div>
-    </div><script>
-  const ctx = document.getElementById('chart').getContext('2d');
-  const priceData = Array.from({ length: 20 }, () => 1.1 + Math.random() * 0.1);
-  const labels = Array.from({ length: priceData.length }, (_, i) => `${i + 1}`);
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Trading Bot OTC</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="api.js"></script>
+</head>
+<body class="bg-gray-900 text-white p-4">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4 text-center text-blue-400">🤖 AI Trading Bot - OTC 1 Min</h1><div class="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
+  <div>
+    <label class="block mb-1 text-sm">Paire OTC</label>
+    <select id="pair" class="p-2 bg-gray-800 rounded w-full md:w-48">
+      <option value="EURUSD">EUR/USD</option>
+      <option value="GBPUSD">GBP/USD</option>
+      <option value="USDJPY">USD/JPY</option>
+    </select>
+  </div>
+  <div>
+    <label class="block mb-1 text-sm">Timeframe</label>
+    <select id="timeframe" class="p-2 bg-gray-800 rounded w-full md:w-48">
+      <option value="1min">1 Minute</option>
+    </select>
+  </div>
+</div>
 
-  const chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Prix OTC (simulé)',
-        data: priceData,
-        borderColor: 'rgb(75, 192, 192)',
-        fill: false,
-      }]
-    },
-    options: {
-      scales: {
-        y: { beginAtZero: false }
-      }
+<div class="bg-gray-800 rounded p-4 mb-4">
+  <canvas id="chart" height="200"></canvas>
+</div>
+
+<div class="bg-gray-800 p-4 rounded">
+  <h2 class="text-lg font-semibold mb-2 text-blue-300">Derniers Signaux</h2>
+  <ul id="signals" class="text-sm space-y-1"></ul>
+</div>
+
+  </div>  <script>
+    const apiKey = '6XLTMJEEILYL1VE3';
+    const pairSelect = document.getElementById('pair');
+    const signalList = document.getElementById('signals');
+    const chartCtx = document.getElementById('chart').getContext('2d');
+    let priceData = [];
+    let chart;
+
+    async function fetchData(symbol) {
+      const url = `https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=${symbol.slice(0,3)}&to_symbol=${symbol.slice(3)}&interval=1min&apikey=${apiKey}&outputsize=compact`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const candles = Object.entries(data['Time Series FX (1min)'] || {});
+      const reversed = candles.slice(0, 20).reverse();
+      return reversed.map(([time, values]) => ({
+        time,
+        close: parseFloat(values['4. close'])
+      }));
     }
-  });
 
-  const signalList = document.getElementById('signals');
+    function miniLogicAI(data) {
+      if (data.length < 3) return 'WAIT';
+      const t0 = data[data.length - 3].close;
+      const t2 = data[data.length - 1].close;
+      if (t2 > t0 + 0.0015) return 'UP';
+      if (t2 < t0 - 0.0015) return 'DOWN';
+      return 'WAIT';
+    }
 
-  // Mini modèle AI simple avec règles sur patterns
-  function miniModelAI(data) {
-    const last = data[data.length - 1];
-    const prev = data[data.length - 2];
-    const trend = last - prev;
-    if (trend > 0.002) return 'UP';
-    if (trend < -0.002) return 'DOWN';
-    return 'WAIT';
-  }
+    async function updateChart() {
+      const symbol = pairSelect.value;
+      const prices = await fetchData(symbol);
+      if (!prices.length) return;
+      priceData = prices;
 
-  function simulateNewPrice() {
-    const last = priceData[priceData.length - 1];
-    const newPrice = last + (Math.random() - 0.5) * 0.01;
-    priceData.push(newPrice);
-    priceData.shift();
-    chart.data.datasets[0].data = priceData;
-    chart.update();
+      const times = prices.map(p => p.time.split(' ')[1]);
+      const closes = prices.map(p => p.close);
+      const signal = miniLogicAI(prices);
 
-    const signal = miniModelAI(priceData);
-    const li = document.createElement('li');
-    li.textContent = `${new Date().toLocaleTimeString()} - Signal : ${signal}`;
-    li.className = signal === 'UP' ? 'text-green-400' : signal === 'DOWN' ? 'text-red-400' : 'text-yellow-400';
-    signalList.prepend(li);
-    if (signalList.childNodes.length > 10) signalList.removeChild(signalList.lastChild);
-  }
+      if (!chart) {
+        chart = new Chart(chartCtx, {
+          type: 'line',
+          data: {
+            labels: times,
+            datasets: [{
+              label: `${symbol} Close Price`,
+              data: closes,
+              borderColor: '#34d399',
+              backgroundColor: 'rgba(52, 211, 153, 0.1)',
+              tension: 0.3
+            }]
+          },
+          options: {
+            scales: {
+              y: { beginAtZero: false }
+            }
+          }
+        });
+      } else {
+        chart.data.labels = times;
+        chart.data.datasets[0].data = closes;
+        chart.update();
+      }
 
-  setInterval(simulateNewPrice, 60000); // 1 minute
-</script>
+      const log = document.createElement('li');
+      log.className = signal === 'UP' ? 'text-green-400' : signal === 'DOWN' ? 'text-red-400' : 'text-yellow-300';
+      log.textContent = `${new Date().toLocaleTimeString()} | ${symbol} → ${signal}`;
+      signalList.prepend(log);
+      if (signalList.childNodes.length > 10) signalList.removeChild(signalList.lastChild);
+    }
 
-  </body>
+    updateChart();
+    setInterval(updateChart, 60000); // Toutes les 1 min
+  </script></body>
 </html>
